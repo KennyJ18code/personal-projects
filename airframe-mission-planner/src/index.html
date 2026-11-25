@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Airframe Mission Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Night-vision cockpit: one dark world by choice. Green = advisory, amber = caution, red = warning. */
+  /* Layout: status strip, five screens on tabs; each screen is summary, then 3D view, then tables. */
+  --bg:#030805; --panel:#07130c; --panel-2:#0b1c12; --line:#17402a; --dim:#5a9a74;
+  --ink:#9fe6b6; --bright:#d2ffe0; --accent:#39d877; --amber:#e8b64c; --red:#ff5d4f;
+  --font:"B612","Segoe UI",system-ui,sans-serif; --mono:"B612 Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.45}
+body{padding:0 16px 40px;max-width:1240px;margin:0 auto}
+h1,h2,h3{margin:0;font-weight:700;text-wrap:balance}
+h1{font-size:17px;letter-spacing:.14em;text-transform:uppercase;color:var(--bright)}
+h2{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.num,td,th,input,select,button{font-family:var(--mono);font-variant-numeric:tabular-nums}
+button,select,input{font-size:14px;color:var(--bright);background:var(--panel-2);border:1px solid var(--line);border-radius:3px;padding:8px 10px;min-height:38px}
+input[type=checkbox]{min-height:0;width:18px;height:18px;accent-color:var(--accent);padding:0}
+button{cursor:pointer;text-transform:uppercase;letter-spacing:.08em;font-size:12px}
+button:hover{border-color:var(--accent)}
+button.on{background:var(--accent);color:#02140a;border-color:var(--accent);font-weight:700}
+:focus-visible{outline:2px solid var(--bright);outline-offset:2px}
+label{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);display:flex;flex-direction:column;gap:4px;min-width:0}
+label.chk{flex-direction:row;align-items:center;gap:8px;min-height:38px}
+label input,label select{width:100%}
+
+header{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:14px 0 10px;border-bottom:1px solid var(--line)}
+header .grow{flex:1 1 200px;min-width:0}
+header select{max-width:100%}
+.pill{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.12em;padding:7px 12px;border:1px solid currentColor;border-radius:2px;white-space:nowrap}
+.pill.ok{color:var(--accent)} .pill.caution{color:var(--amber)} .pill.warn{color:#140302;background:var(--red);border-color:var(--red)}
+nav{display:flex;gap:6px;overflow-x:auto;padding:10px 0;position:sticky;top:0;background:var(--bg);z-index:5;border-bottom:1px solid var(--line)}
+nav a{flex:1 0 auto;text-align:center;font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:var(--dim);text-decoration:none;padding:9px 12px;border:1px solid var(--line);border-radius:3px}
+nav a.on{color:#02140a;background:var(--accent);border-color:var(--accent);font-weight:700}
+section.view{display:none;padding-top:16px;gap:16px;flex-direction:column}
+section.view.on{display:flex}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.cols{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.tile{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:3px;padding:10px 12px;min-width:0}
+.tile.caution{border-left-color:var(--amber)} .tile.warn{border-left-color:var(--red)}
+.tile b{display:block;font-family:var(--mono);font-size:20px;color:var(--bright);font-weight:700;overflow-wrap:anywhere}
+.tile span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.gl{position:relative;border:1px solid var(--line);border-radius:4px;background:#010402;overflow:hidden}
+.gl canvas{display:block;width:100%;height:420px;touch-action:pan-y}
+#globe{height:460px;touch-action:none;cursor:grab}
+.gl .tools{position:absolute;left:8px;top:8px;display:flex;gap:6px;flex-wrap:wrap}
+.gl .tools.r{left:auto;right:8px}
+.gl .tools button{background:rgba(3,8,5,.82)}
+.gl .tools button.on{background:var(--accent)}
+.gl .cap{position:absolute;left:10px;bottom:8px;right:10px;font-family:var(--mono);font-size:11px;color:var(--dim);pointer-events:none}
+.msgs{display:flex;flex-direction:column;gap:6px;list-style:none;margin:0;padding:0}
+.msgs li{font-size:13px;padding:8px 10px;border-left:3px solid var(--amber);background:var(--panel-2);color:var(--bright)}
+.msgs li.warn{border-left-color:var(--red)} .msgs li.ok{border-left-color:var(--accent);color:var(--ink)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.row>label{flex:1 1 110px}
+.row>.wide{flex:3 1 220px}
+.seg{display:flex;gap:0}
+.seg button{border-radius:0;flex:1}
+.seg button:first-child{border-radius:3px 0 0 3px}.seg button:last-child{border-radius:0 3px 3px 0}
+.hint{font-size:12px;color:var(--dim);margin:0;max-width:65ch}
+ol.wps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0}
+.wp{border:1px solid var(--line);background:var(--panel-2);border-radius:3px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.wp-head{display:flex;gap:6px;align-items:center}
+.wp-n{font-family:var(--mono);font-weight:700;color:#02140a;background:var(--accent);min-width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;flex:none}
+.wp-head input{flex:1 1 60px;min-width:0;font-weight:700}
+.wp-head button{padding:8px 9px;flex:none}
+.wp-sub,.wp-fuel{font-family:var(--mono);font-size:11px;color:var(--dim);overflow-wrap:anywhere}
+.wp-fuel{color:var(--ink)}
+.wp-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;align-items:end}
+.leg{margin:0 0 0 12px;border-left:2px dashed var(--line);padding:8px 0 8px 12px;font-family:var(--mono);font-size:12px;display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--ink)}
+.leg b{color:var(--bright)} .leg .bad{color:var(--red)} .leg .mid{color:var(--amber)} .leg i{font-style:normal;color:var(--dim)}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{padding:7px 9px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:400}
+th:first-child,td:first-child{text-align:left}
+td{color:var(--bright)} td.bad{color:var(--red)} td.mid{color:var(--amber)} td.dimc{color:var(--dim)}
+tr.sel td{background:var(--panel-2)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{font-size:11px;padding:6px 9px;min-height:32px}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.toast{position:fixed;left:16px;right:16px;bottom:16px;margin:0 auto;max-width:560px;background:var(--panel-2);border:1px solid var(--amber);color:var(--bright);padding:12px 14px;border-radius:4px;font-size:13px;z-index:20;display:none}
+.toast.on{display:block}
+footer{margin-top:24px;font-size:12px;color:var(--dim);border-top:1px solid var(--line);padding-top:12px;max-width:80ch}
+@media (max-width:900px){.cols{grid-template-columns:minmax(0,1fr)}.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:520px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.gl canvas{height:290px}#globe{height:340px}h1{font-size:14px}.tile b{font-size:17px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1 class="grow">Airframe Mission Planner</h1>
+  <label for="primary" style="flex:1 1 220px">Airframe<select id="primary"></select></label>
+  <span id="status" class="pill ok" role="status">PLAN OK</span>
+</header>
+<nav id="nav" aria-label="Screens">
+  <a href="#mission">Mission</a><a href="#fuel">Fuel</a><a href="#payload">Payload</a><a href="#fleet">Fleet</a><a href="#airframes">Airframes</a>
+</nav>
+
+<section class="view" id="v-mission">
+  <div class="tiles" id="tiles"></div>
+  <div class="cols">
+    <div class="stack">
+      <div class="gl">
+        <canvas id="globe" aria-label="3D map of the route"></canvas>
+        <div class="tools"><button id="tapmode" type="button" aria-pressed="false">Tap to add waypoint</button></div>
+        <div class="tools r"><button id="fit" type="button">Fit route</button><button id="zin" type="button" aria-label="Zoom in">+</button><button id="zout" type="button" aria-label="Zoom out">&minus;</button></div>
+        <div class="cap" id="globecap">Bright dots: military fields. Dim dots: public airports. Dashed ring: still-air range from each fuel point.</div>
+      </div>
+      <ul class="msgs" id="msgs"></ul>
+      <div class="panel">
+        <h2>Mission setup</h2>
+        <div class="row" id="setup"></div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <h2>Add waypoint</h2>
+        <div class="row">
+          <label class="wide" for="addtxt">Airfield, coordinates or MGRS<input id="addtxt" list="aflist" autocomplete="off" placeholder="KHOP  /  36.67, -87.50  /  16SDF5532058382"></label>
+          <button id="addbtn" type="button">Add</button>
+        </div>
+        <datalist id="aflist"></datalist>
+        <p class="hint">Accepts an ICAO or FAA code or airport name (military fields plus about 3,900 US public airports), decimal degrees, degrees and minutes with N/S/E/W, or an MGRS grid. New points go on the end of the route.</p>
+      </div>
+      <div class="panel">
+        <h2>Route and legs</h2>
+        <ol class="wps" id="wps"></ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="view" id="v-fuel">
+  <div class="panel">
+    <h2>Fuel aboard along the route</h2>
+    <div class="row"><div class="chips" id="cmp-fuel"></div></div>
+    <div class="row"><div class="seg" id="ymode"><button type="button" data-m="pct">% of tanks</button><button type="button" data-m="lb">Pounds</button></div></div>
+    <div class="gl"><canvas id="c-fuel" aria-label="3D chart of fuel aboard against distance for each selected airframe"></canvas>
+      <div class="cap">Drag sideways to rotate. Amber line: reserve. Red: below reserve.</div></div>
+  </div>
+  <div class="panel"><h2 id="fuel-h">Fuel plan</h2><div class="tw"><table id="t-fuel"></table></div></div>
+  <div class="panel"><h2>Fuel by phase</h2><div class="tw"><table id="t-phase"></table></div>
+    <p class="hint">Run-up and taxi fuel is burn rate times minutes. Set the minutes per waypoint in the route list, or change the rates and default minutes on the Airframes screen.</p></div>
+</section>
+
+<section class="view" id="v-payload">
+  <div class="panel">
+    <h2>Payload available on each leg</h2>
+    <div class="row"><div class="chips" id="cmp-pay"></div></div>
+    <div class="gl"><canvas id="c-pay" aria-label="3D bar chart of payload available per leg for each selected airframe"></canvas>
+      <div class="cap">Bars: most you can carry with the fuel that leg needs. Bright line: planned payload. Red bar: planned load does not fit.</div></div>
+  </div>
+  <div class="panel"><h2 id="pay-h">Leg weights</h2><div class="tw"><table id="t-pay"></table></div></div>
+  <div class="panel">
+    <h2>Payload against range</h2>
+    <div class="gl"><canvas id="c-pr" aria-label="3D chart of payload against still-air range for each selected airframe"></canvas>
+      <div class="cap">Still air, from the first waypoint's elevation and temperature, landing with reserve.</div></div>
+  </div>
+</section>
+
+<section class="view" id="v-fleet">
+  <div class="panel">
+    <h2>Every airframe on this mission</h2>
+    <div class="row"><label for="metric" style="flex:0 1 320px">Chart shows<select id="metric">
+      <option value="range">Still-air range with leg 1 payload (nm)</option>
+      <option value="pay">Payload available on the tightest leg (lb)</option>
+      <option value="burn">Mission fuel burn (lb)</option>
+      <option value="time">Flight time (hours)</option></select></label></div>
+    <div class="gl"><canvas id="c-fleet" aria-label="3D bar chart comparing all airframes"></canvas>
+      <div class="cap">Green: flies the plan as entered. Amber or red: needs fuel or is overweight.</div></div>
+  </div>
+  <div class="panel"><h2>Comparison</h2><div class="tw"><table id="t-fleet"></table></div>
+    <p class="hint">Same waypoints, payloads, wind and fuel policy for every airframe. Runway length and surface are not checked.</p></div>
+</section>
+
+<section class="view" id="v-airframes">
+  <div class="panel">
+    <h2>Airframe data</h2>
+    <div class="row"><label for="edsel" style="flex:1 1 240px">Edit<select id="edsel"></select></label><button id="edreset" type="button">Reset to default</button></div>
+    <div class="tiles" id="edtiles"></div>
+    <div class="form" id="edform"></div>
+    <p class="hint">Built-in numbers are approximate public figures. Replace them with values from your operator's manual and they are saved on this device.</p>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="alert"></div>
+<footer>Planning estimates only, built on approximate public data and a simplified performance model. Not a substitute for operator's manual performance charts, weight and balance, or approved mission planning systems.</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="mgrs.js"></script>
+<script src="land.js"></script>
+<script src="fields.js"></script>
+<script src="data.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

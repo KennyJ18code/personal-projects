@@ -1,0 +1,112 @@
+/* Airframe and airfield reference data. Figures are approximate, from public fact sheets,
+   and are meant to be edited in the app. Units: lb, kt (TAS), nm, ft, lb/hr. */
+(function (root) {
+  const H = { burnExp: 0.6, cruiseAlt: 1500, altK: 0.008, reserveMin: 30, refDA: 0, derate: 0, runupMin: 10, taxiOutMin: 5, taxiInMin: 3 };
+  const F = { burnExp: 0.7, reserveMin: 45, refDA: 3000, derate: 0.012, hogeDA: 0, mgwExt: 0, hook: 0, slingSpeed: 0, runupMin: 5, taxiOutMin: 15, taxiInMin: 10 };
+
+  const AIRFRAMES = [
+    { ...H, id: 'uh60m', name: 'UH-60M Black Hawk', role: 'helo', group: 'Army rotary',
+      oew: 12511, crew: 900, mgw: 22000, mgwExt: 23500, maxPayload: 9000, hook: 9000,
+      fuel: 2446, cruise: 145, slingSpeed: 100, burn: 1000, burnRefW: 18000, startFuel: 20, idleBurn: 450, taxiBurn: 600, climbFuel: 30, hogeDA: 4000, aar: false,
+      aux: [{ id: 'esss2', name: 'ESSS 2 x 230 gal external', fuel: 3128, kit: 650, drag: 0.05 },
+            { id: 'int2', name: 'Internal aux 2 x 185 gal', fuel: 2516, kit: 350, drag: 0 }] },
+    { ...H, id: 'uh60l', name: 'UH-60L Black Hawk', role: 'helo', group: 'Army rotary',
+      oew: 11516, crew: 900, mgw: 22000, mgwExt: 23500, maxPayload: 8000, hook: 8000,
+      fuel: 2446, cruise: 140, slingSpeed: 100, burn: 1000, burnRefW: 17500, startFuel: 20, idleBurn: 450, taxiBurn: 600, climbFuel: 30, hogeDA: 3000, aar: false,
+      aux: [{ id: 'esss2', name: 'ESSS 2 x 230 gal external', fuel: 3128, kit: 650, drag: 0.05 }] },
+    { ...H, id: 'ch47f', name: 'CH-47F Chinook', role: 'helo', group: 'Army rotary',
+      oew: 24578, crew: 1000, mgw: 50000, mgwExt: 50000, maxPayload: 24000, hook: 26000,
+      fuel: 7031, cruise: 140, slingSpeed: 110, burn: 2800, burnRefW: 40000, startFuel: 50, idleBurn: 1200, taxiBurn: 1600, climbFuel: 80, hogeDA: 6000, aar: false,
+      aux: [{ id: 'erfs1', name: 'ERFS II 1 x 800 gal', fuel: 5440, kit: 620, drag: 0 },
+            { id: 'erfs2', name: 'ERFS II 2 x 800 gal', fuel: 10880, kit: 1240, drag: 0 },
+            { id: 'erfs3', name: 'ERFS II 3 x 800 gal', fuel: 16320, kit: 1860, drag: 0 }] },
+    { ...H, id: 'ah64e', name: 'AH-64E Apache', role: 'helo', group: 'Army rotary',
+      oew: 11800, crew: 450, mgw: 23000, mgwExt: 23000, maxPayload: 5000, hook: 0,
+      fuel: 2550, cruise: 130, slingSpeed: 0, burn: 950, burnRefW: 18000, startFuel: 20, idleBurn: 450, taxiBurn: 600, climbFuel: 30, hogeDA: 1000, aar: false,
+      aux: [{ id: 'ext2', name: '2 x 230 gal external', fuel: 3128, kit: 300, drag: 0.05 },
+            { id: 'ext4', name: '4 x 230 gal ferry', fuel: 6256, kit: 600, drag: 0.10 }] },
+    { ...H, id: 'uh72a', name: 'UH-72A Lakota', role: 'helo', group: 'Army rotary',
+      oew: 3951, crew: 400, mgw: 7903, mgwExt: 7903, maxPayload: 3000, hook: 3307,
+      fuel: 1560, cruise: 130, slingSpeed: 90, burn: 540, burnRefW: 6800, startFuel: 10, idleBurn: 200, taxiBurn: 280, climbFuel: 15, hogeDA: 7000, aar: false, aux: [] },
+    { ...H, id: 'hh60w', name: 'HH-60W Jolly Green II', role: 'helo', group: 'Rescue',
+      oew: 15300, crew: 900, mgw: 22000, mgwExt: 22500, maxPayload: 5000, hook: 8000,
+      fuel: 4488, cruise: 150, slingSpeed: 100, burn: 1050, burnRefW: 20000, startFuel: 20, idleBurn: 480, taxiBurn: 620, climbFuel: 30, hogeDA: 3000, aar: true, aux: [] },
+
+    { ...F, id: 'c130j30', name: 'C-130J-30 Super Hercules', role: 'fixed', group: 'Transport',
+      oew: 78500, crew: 800, mgw: 164000, maxPayload: 44000,
+      fuel: 44240, cruise: 345, burn: 5200, burnRefW: 140000, cruiseAlt: 26000, altK: 0.012, startFuel: 150, idleBurn: 2000, taxiBurn: 2800, climbFuel: 1000, aar: false,
+      aux: [{ id: 'ext', name: 'External tanks 2 x 1,360 gal', fuel: 18500, kit: 1600, drag: 0.03 }] },
+    { ...F, id: 'c27j', name: 'C-27J Spartan', role: 'fixed', group: 'Transport',
+      oew: 37500, crew: 600, mgw: 70100, maxPayload: 25350,
+      fuel: 21700, cruise: 315, burn: 2700, burnRefW: 62000, cruiseAlt: 25000, altK: 0.012, startFuel: 80, idleBurn: 1000, taxiBurn: 1400, climbFuel: 600, aar: false, aux: [] },
+    { ...F, id: 'c17a', name: 'C-17A Globemaster III', role: 'fixed', group: 'Transport',
+      oew: 282500, crew: 700, mgw: 585000, maxPayload: 170900,
+      fuel: 241000, cruise: 450, burn: 20000, burnRefW: 480000, cruiseAlt: 31000, altK: 0.02, startFuel: 400, idleBurn: 5000, taxiBurn: 6500, climbFuel: 4500, aar: true, aux: [] },
+    { ...F, id: 'c5m', name: 'C-5M Super Galaxy', role: 'fixed', group: 'Transport',
+      oew: 380000, crew: 1400, mgw: 840000, maxPayload: 281000,
+      fuel: 332500, cruise: 450, burn: 24000, burnRefW: 700000, cruiseAlt: 33000, altK: 0.02, startFuel: 600, idleBurn: 7000, taxiBurn: 9000, climbFuel: 7000, aar: true, aux: [] },
+
+    { ...F, id: 'kc135r', name: 'KC-135R Stratotanker', role: 'tanker', group: 'Tanker',
+      oew: 122000, crew: 700, mgw: 322500, maxPayload: 83000,
+      fuel: 200000, cruise: 460, burn: 10500, burnRefW: 260000, cruiseAlt: 35000, altK: 0.02, startFuel: 300, idleBurn: 3600, taxiBurn: 4800, climbFuel: 4500, aar: false, aux: [] },
+    { ...F, id: 'kc46a', name: 'KC-46A Pegasus', role: 'tanker', group: 'Tanker',
+      oew: 181600, crew: 700, mgw: 415000, maxPayload: 65000,
+      fuel: 212300, cruise: 460, burn: 11500, burnRefW: 340000, cruiseAlt: 35000, altK: 0.02, startFuel: 300, idleBurn: 3000, taxiBurn: 4200, climbFuel: 5000, aar: true, aux: [] },
+
+    { ...H, id: 'custom', name: 'Custom airframe', role: 'helo', group: 'Custom',
+      oew: 10000, crew: 800, mgw: 18000, mgwExt: 18000, maxPayload: 6000, hook: 6000,
+      fuel: 2400, cruise: 135, slingSpeed: 95, burn: 900, burnRefW: 15000, startFuel: 20, idleBurn: 400, taxiBurn: 550, climbFuel: 30, hogeDA: 4000, aar: false, aux: [] }
+  ];
+
+  // [ICAO, name, lat, lon, field elevation ft] - coordinates rounded, for planning only
+  const AIRFIELDS = [
+    ['KHOP','Campbell AAF, Fort Campbell',36.67,-87.50,573],['KFTK','Godman AAF, Fort Knox',37.91,-85.97,756],
+    ['KFBG','Simmons AAF, Fort Liberty',35.13,-78.94,244],['KPOB','Pope AAF',35.17,-79.01,217],
+    ['KGRK','Robert Gray AAF, Fort Cavazos',31.07,-97.83,1015],['KHLR','Hood AAF, Fort Cavazos',31.14,-97.71,924],
+    ['KOZR','Cairns AAF, Fort Novosel',31.28,-85.71,301],['KLSF','Lawson AAF, Fort Moore',32.34,-84.99,232],
+    ['KSVN','Hunter AAF',32.01,-81.15,41],['KFCS','Butts AAF, Fort Carson',38.68,-104.76,5838],
+    ['KBIF','Biggs AAF, Fort Bliss',31.85,-106.38,3946],['KGRF','Gray AAF, JBLM',47.08,-122.58,300],
+    ['KTCM','McChord Field, JBLM',47.14,-122.48,322],['KFRI','Marshall AAF, Fort Riley',39.06,-96.76,1065],
+    ['KGTB','Wheeler-Sack AAF, Fort Drum',44.06,-75.72,688],['KBYS','Bicycle Lake AAF, Fort Irwin',35.28,-116.63,2350],
+    ['KPOE','Polk AAF, Fort Johnson',31.04,-93.19,330],['KTBN','Forney AAF, Fort Leonard Wood',37.74,-92.14,1159],
+    ['KMUI','Muir AAF, Fort Indiantown Gap',40.43,-76.57,488],['KFHU','Libby AAF, Fort Huachuca',31.59,-110.34,4719],
+    ['PAFB','Ladd AAF, Fort Wainwright',64.84,-147.61,454],['PAED','Elmendorf, JBER',61.25,-149.81,213],
+    ['PHHI','Wheeler AAF',21.48,-158.04,837],['PHIK','Hickam, JBPHH',21.32,-157.92,13],
+    ['KDOV','Dover AFB',39.13,-75.47,24],['KWRI','McGuire, JB MDL',40.02,-74.59,131],
+    ['KCHS','JB Charleston',32.90,-80.04,46],['KSUU','Travis AFB',38.26,-121.93,62],
+    ['KLRF','Little Rock AFB',34.92,-92.15,311],['KDYS','Dyess AFB',32.42,-99.85,1789],
+    ['KADW','JB Andrews',38.81,-76.87,280],['KFFO','Wright-Patterson AFB',39.83,-84.05,823],
+    ['KBLV','Scott AFB',38.55,-89.84,459],['KMCF','MacDill AFB',27.85,-82.52,14],
+    ['KIAB','McConnell AFB',37.62,-97.27,1371],['KSKA','Fairchild AFB',47.62,-117.66,2461],
+    ['KLSV','Nellis AFB',36.24,-115.03,1870],['KNKX','MCAS Miramar',32.87,-117.14,477],
+    ['KNYL','MCAS Yuma',32.66,-114.61,213],['KDMA','Davis-Monthan AFB',32.17,-110.88,2704],
+    ['KCOS','Peterson SFB',38.81,-104.70,6187],['KHIF','Hill AFB',41.12,-111.97,4789],
+    ['KPSM','Pease ANGB',43.08,-70.82,100],['KBGR','Bangor ANGB',44.81,-68.83,192],
+    ['KNGU','NS Norfolk',36.94,-76.29,15],['KLFI','Langley, JBLE',37.08,-76.36,11],
+    ['KVPS','Eglin AFB',30.48,-86.53,87],['KHRT','Hurlburt Field',30.43,-86.69,38],
+    ['CYQX','Gander',48.94,-54.57,496],['BGTL','Pituffik SB',76.53,-68.70,251],
+    ['BIKF','Keflavik',63.99,-22.61,171],['EGUN','RAF Mildenhall',52.36,0.49,33],
+    ['EGUL','RAF Lakenheath',52.41,0.56,32],['ETAR','Ramstein AB',49.44,7.60,781],
+    ['ETAD','Spangdahlem AB',49.97,6.69,1197],['ETOU','Wiesbaden AAF',50.05,8.33,461],
+    ['ETIK','Illesheim AAF',49.47,10.39,1079],['ETIH','Hohenfels AAF',49.22,11.84,1455],
+    ['ETIC','Grafenwoehr AAF',49.70,11.94,1363],['ETEB','Katterbach AAF, Ansbach',49.31,10.64,1467],
+    ['LIPA','Aviano AB',46.03,12.60,410],['LICZ','NAS Sigonella',37.40,14.92,79],
+    ['LERT','NS Rota',36.65,-6.35,86],['LPLA','Lajes Field',38.76,-27.09,180],
+    ['LGSA','Souda Bay',35.53,24.15,490],['LTAG','Incirlik AB',37.00,35.43,238],
+    ['EPPW','Powidz AB',52.38,17.85,371],['LRCK','Mihail Kogalniceanu AB',44.36,28.49,353],
+    ['OKAS','Ali Al Salem AB',29.35,47.52,472],['OTBH','Al Udeid AB',25.12,51.31,130],
+    ['OMAM','Al Dhafra AB',24.25,54.55,77],['HDAM','Camp Lemonnier, Djibouti',11.55,43.16,49],
+    ['ORAA','Al Asad AB',33.79,42.44,618],['ORBI','Baghdad Intl',33.26,44.23,114],
+    ['ORER','Erbil',36.24,43.96,1341],['OAIX','Bagram',34.95,69.27,4895],
+    ['FJDG','Diego Garcia',-7.31,72.41,9],['PGUA','Andersen AFB, Guam',13.58,144.93,627],
+    ['RODN','Kadena AB',26.36,127.77,143],['RJTY','Yokota AB',35.75,139.35,463],
+    ['RJTR','Kastner AAF, Camp Zama',35.51,139.39,360],['RKSO','Osan AB',37.09,127.03,38],
+    ['RKSG','Desiderio AAF, Camp Humphreys',36.96,127.03,51],['RKJK','Kunsan AB',35.90,126.62,29],
+    ['PWAK','Wake Island',19.28,166.64,14],['PKWA','Bucholz AAF, Kwajalein',8.72,167.73,9],
+    ['YPDN','RAAF Darwin',-12.41,130.88,103]
+  ].map(a => ({ icao: a[0], name: a[1], lat: a[2], lon: a[3], elev: a[4] }));
+
+  const out = { AIRFRAMES, AIRFIELDS };
+  if (typeof module !== 'undefined' && module.exports) module.exports = out;
+  else Object.assign(root, out);
+})(typeof window !== 'undefined' ? window : globalThis);
