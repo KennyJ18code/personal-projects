@@ -1,5 +1,5 @@
 // Offline support. App files: network first, cached copy as fallback. Terrain tiles: kept once fetched, so flown areas work offline.
-const APP = 'rwfs-app-v2', TILES = 'rwfs-tiles-v1';
+const APP = 'rwfs-app-v4', TILES = 'rwfs-tiles-v1';
 const FILES = ['./', './index.html', './three.min.js', './manifest.webmanifest', './icon-192.png', './js/fields.js', './js/core.js', './js/systems.js', './js/physics.js', './js/terrain.js', './js/models.js', './js/world.js', './js/panel.js', './js/input.js', './js/ui.js', './js/main.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(APP).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
