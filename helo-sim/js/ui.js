@@ -8,14 +8,15 @@
   // ---------- overlay shell ----------
   function open(page, full) { const ov = $('ov'); if (U.page === page) return close(); U.page = page; ov.className = 'on' + (full ? ' full' : ''); render(); }
   function close() { U.page = null; $('ov').className = ''; }
+  const STAT = '<div id="stat"></div>';
   function head(title, tabs, cur) { $('ovh').innerHTML = `<b>${title}</b>` + (tabs || []).map(t => `<button data-tab="${t}" class="${t === cur ? 'on' : ''}">${t}</button>`).join('') + '<span style="flex:1"></span><button data-close="1">Close</button>'; }
-  function render() { const p = U.page; if (!p || !G().heli) return; ({ sw: rSw, chk: rChk, map: rMap, svc: rSvc, msn: rMsn, wx: rWx })[p](); }
+  function render() { const p = U.page; if (!p || !G().heli) return; if (U._last !== p + U.swPage) { U._last = p + U.swPage; $('ovb').scrollTop = 0; } ({ sw: rSw, chk: rChk, map: rMap, svc: rSvc, msn: rMsn, wx: rWx })[p](); }
 
   // ---------- cockpit switches ----------
   function rSw() {
     const g = G(), sys = g.sys, spec = g.spec, pages = ['ELEC', 'ENG', 'AFCS', 'LIGHTS', 'MISC'].concat(spec.weapons ? ['WPN'] : []); if (!pages.includes(U.swPage)) U.swPage = 'ELEC';
     head('COCKPIT', pages, U.swPage);
-    let h = '<div class="grid">';
+    let h = STAT + '<div class="grid">';
     S.SWITCHES.filter(d => d.page === U.swPage).forEach(d => {
       if ((d.id === 'hookArm' || d.id === 'hookRel') && !spec.hook) return;
       const opts = d.kind === 'm' ? ['PUSH'] : d.opts || ['OFF', 'ON'], covered = d.guard && !(guards[d.id] > performance.now());
@@ -30,9 +31,9 @@
     $('ovb').innerHTML = h; syncSw();
   }
   function syncSw() {
-    if (U.page !== 'sw') return; const g = G(), sys = g.sys, sw = sys.sw;
+    if (U.page !== 'sw' && U.page !== 'chk') return; const g = G(), sys = g.sys, sw = sys.sw; stat();
     $('ovb').querySelectorAll('button[data-sw]').forEach(b => { const id = b.dataset.sw, d = S.SWITCHES.find(x => x.id === id); let on = d.kind === 'm' ? (id === 'start1' ? sys.eng[0].starter : id === 'start2' ? sys.eng[1].starter : false) : sw[id] === +b.dataset.v;
-      b.className = on ? (d.guard || (d.kind !== 'm' && d.kind === 2 && !d.opts && +b.dataset.v === 0) ? (d.guard && +b.dataset.v ? 'warn' : 'on') : 'on') : ''; });
+      b.className = !on ? '' : d.kind === 'm' ? 'amb' : +b.dataset.v === 0 ? 'sel0' : d.guard ? 'warn' : 'on'; });
     const e = sys.eng, t = (id, s) => { const el = $(id); if (el) el.textContent = s; };
     t('hbv', 'Bug ' + String(Math.round(g.heli.hdgBug)).padStart(3, '0') + '   heading ' + String(Math.round(g.heli.out.hdg)).padStart(3, '0'));
     t('barov', 'Set ' + S.baroSet + ' hPa (' + (S.baroSet * 0.02953).toFixed(2) + ' inHg)');
@@ -50,17 +51,29 @@
   }
 
   // ---------- checklist ----------
+  function stat() { const el = $('stat'); if (!el) return; const sys = G().sys, e = sys.eng, c = (l, v, k) => `<span class="${k || ''}"><i>${l}</i>${v}</span>`;
+    el.innerHTML = c('BATT', Math.round(sys.batt * 100) + '%', sys.batt < 0.25 ? 'a' : '') + c('DC', sys.dc ? 'ON' : 'OFF', sys.dc ? 'g' : '') + c('AC', sys.ac ? 'ON' : 'OFF', sys.ac ? 'g' : '') + c('APU', Math.round(sys.apuN * 100) + '%', sys.apuN > 0.95 ? 'g' : '') +
+      c('NG 1', Math.round(e[0].ng) + '%', e[0].lit ? 'g' : '') + c('NG 2', Math.round(e[1].ng) + '%', e[1].lit ? 'g' : '') + c('TGT', Math.round(e[0].tgt) + ' / ' + Math.round(e[1].tgt), e[0].tgt > 880 || e[1].tgt > 880 ? 'r' : '') + c('ROTOR', Math.round(sys.nr * 100) + '%', sys.nr > 0.98 ? 'g' : '') + c('HYD', sys.hydOK ? 'OK' : 'OFF', sys.hydOK ? 'g' : '') + c('FPS', sys.fpsOK ? 'ON' : 'OFF', sys.fpsOK ? 'g' : ''); }
+  // Each line: text, done-test, cockpit page, live read-out, the switches for that step (shown right on the line).
   const CHK = [
-    ['Parking brake SET', s => s.sw.pbrake, 'MISC'], ['Battery ON', s => s.sw.batt, 'ELEC'], ['Fuel boost pumps 1 and 2 ON', s => s.sw.boost1 && s.sw.boost2, 'ENG'], ['Fuel selectors 1 and 2 DIR', s => s.sw.fuelSel1 && s.sw.fuelSel2, 'ENG'],
-    ['APU RUN, wait for APU ON', s => s.apuN > 0.95 || s.ac && s.nr > 0.9, 'ELEC', s => 'APU ' + Math.round(s.apuN * 100) + '%'], ['APU generator ON', s => s.ac, 'ELEC'], ['Backup hydraulic pump AUTO', s => s.sw.bkpPump > 0, 'ELEC'],
-    ['Engine ignition ON', s => s.sw.ign, 'ENG'], ['Rotor brake OFF', s => !s.sw.rbrake, 'ENG'],
-    ['Starter 1, then power lever 1 IDLE above 15% NG', s => s.eng[0].lit && !s.eng[0].hot, 'ENG', s => 'NG ' + Math.round(s.eng[0].ng) + '%'], ['Starter 2, then power lever 2 IDLE above 15% NG', s => s.eng[1].lit && !s.eng[1].hot, 'ENG', s => 'NG ' + Math.round(s.eng[1].ng) + '%'],
-    ['Both engines stable at idle (NG 66%)', s => s.eng[0].ng > 63 && s.eng[1].ng > 63, 'ENG'], ['Power levers 1 and 2 FLY, rotor 100%', s => s.sw.pcl1 === 2 && s.sw.pcl2 === 2 && s.nr > 0.98, 'ENG', s => 'NR ' + Math.round(s.nr * 100) + '%'],
-    ['Generators 1 and 2 ON', s => s.gens && s.gens[0] && s.gens[1], 'ELEC'], ['APU generator OFF, APU OFF', s => !s.sw.apu && !s.sw.apuGen, 'ELEC'], ['SAS 1, SAS 2, TRIM and FPS ON', s => s.fpsOK, 'AFCS'],
-    ['Pitot heat ON (anti-ice if cold and in cloud)', s => s.sw.pitot, 'ELEC'], ['Position and anti-collision lights ON', s => s.sw.pos && s.sw.acol, 'LIGHTS'], ['Parking brake OFF when ready to lift', s => !s.sw.pbrake, 'MISC']
+    ['Parking brake SET', s => s.sw.pbrake, 'MISC', null, ['pbrake']], ['Battery ON', s => s.sw.batt, 'ELEC', null, ['batt']],
+    ['Fuel boost pumps ON', s => s.sw.boost1 && s.sw.boost2, 'ENG', null, ['boost1', 'boost2']], ['Fuel selectors to DIR', s => s.sw.fuelSel1 && s.sw.fuelSel2, 'ENG', null, ['fuelSel1', 'fuelSel2']],
+    ['APU to RUN and wait', s => s.apuN > 0.95 || (s.ac && s.nr > 0.9), 'ELEC', s => 'APU ' + Math.round(s.apuN * 100) + '%', ['apu']], ['APU generator ON', s => s.ac, 'ELEC', null, ['apuGen']],
+    ['Backup hydraulic pump AUTO', s => s.sw.bkpPump > 0, 'ELEC', null, ['bkpPump']], ['Engine ignition ON', s => s.sw.ign, 'ENG', null, ['ign']], ['Rotor brake OFF', s => !s.sw.rbrake, 'ENG', null, ['rbrake']],
+    ['Engine 1: press starter, wait for NG 15%, then lever to IDLE', s => s.eng[0].lit && !s.eng[0].hot, 'ENG', s => 'NG ' + Math.round(s.eng[0].ng) + '%  TGT ' + Math.round(s.eng[0].tgt), ['start1', 'pcl1']],
+    ['Engine 2: press starter, wait for NG 15%, then lever to IDLE', s => s.eng[1].lit && !s.eng[1].hot, 'ENG', s => 'NG ' + Math.round(s.eng[1].ng) + '%  TGT ' + Math.round(s.eng[1].tgt), ['start2', 'pcl2']],
+    ['Wait for both engines at idle', s => s.eng[0].ng > 63 && s.eng[1].ng > 63, 'ENG', s => 'NG ' + Math.round(s.eng[0].ng) + ' / ' + Math.round(s.eng[1].ng) + '%', []],
+    ['Both power levers to FLY, rotor to 100%', s => s.sw.pcl1 === 2 && s.sw.pcl2 === 2 && s.nr > 0.98, 'ENG', s => 'ROTOR ' + Math.round(s.nr * 100) + '%', ['pcl1', 'pcl2']],
+    ['Generators 1 and 2 ON', s => s.gens && s.gens[0] && s.gens[1], 'ELEC', null, ['gen1', 'gen2']], ['APU generator OFF, then APU OFF', s => !s.sw.apu && !s.sw.apuGen, 'ELEC', null, ['apuGen', 'apu']],
+    ['SAS 1, SAS 2, TRIM and FPS ON', s => s.fpsOK, 'AFCS', null, ['sas1', 'sas2', 'trim', 'fps']], ['Pitot heat ON', s => s.sw.pitot, 'ELEC', null, ['pitot']],
+    ['Position and anti-collision lights ON', s => s.sw.pos && s.sw.acol, 'LIGHTS', null, ['pos', 'acol']], ['Parking brake OFF when ready to lift', s => !s.sw.pbrake, 'MISC', null, ['pbrake']]
   ];
-  function rChk() { head('START CHECKLIST'); $('ovb').innerHTML = '<ol class="chk">' + CHK.map((c, i) => `<li data-chk="${i}"><i></i><span>${i + 1}. ${c[0]}</span><small></small></li>`).join('') + '</ol><p class="dim" style="margin-top:8px">Tap a line to open the panel it is on. Items tick themselves when the aircraft is actually in that state.</p>'; syncChk(); }
-  function syncChk() { if (U.page !== 'chk') return; const sys = G().sys; let next = true; $('ovb').querySelectorAll('li[data-chk]').forEach((li, i) => { const ok = !!CHK[i][1](sys); li.className = ok ? 'ok' : next ? 'next' : ''; if (!ok) next = false; li.querySelector('small').textContent = CHK[i][3] ? CHK[i][3](sys) : ''; }); }
+  let chkNext = -1;
+  function swHtml(id) { const d = S.SWITCHES.find(x => x.id === id), opts = d.kind === 'm' ? ['PRESS'] : d.opts || ['OFF', 'ON']; return `<div class="swc"><span>${d.label}</span><div class="seg">` + opts.map((o, i) => `<button data-sw="${d.id}" data-v="${i}">${o}</button>`).join('') + '</div></div>'; }
+  function rChk() { head('START-UP'); chkNext = -1;
+    $('ovb').innerHTML = STAT + '<ol class="chk">' + CHK.map((c, i) => `<li data-chk="${i}"><i></i><div class="ct"><span>${i + 1}. ${c[0]}</span><small></small></div><div class="cc">${c[4].map(swHtml).join('')}</div></li>`).join('') + '</ol><p class="dim" style="margin-top:8px">Work down the list. Each step has its switches on the same line, and ticks itself when the aircraft is really in that state. The amber line is the next step.</p>'; syncSw(); syncChk(); }
+  function syncChk() { if (U.page !== 'chk') return; const sys = G().sys; let next = -1; $('ovb').querySelectorAll('li[data-chk]').forEach((li, i) => { const ok = !!CHK[i][1](sys); if (!ok && next < 0) next = i; li.className = ok ? 'ok' : next === i ? 'next' : ''; li.querySelector('small').textContent = CHK[i][3] ? CHK[i][3](sys) : ''; });
+    if (next !== chkNext) { chkNext = next; const li = $('ovb').querySelector('li.next'); if (li && li.scrollIntoView) li.scrollIntoView({ block: 'center', behavior: 'smooth' }); } }
 
   // ---------- map and route ----------
   const tileImg = new Map();
@@ -104,7 +117,7 @@
     S.wpn.targets.forEach(t => { if (t.alive) { x.fillStyle = '#ff4a3d'; x.fillRect(sx(t.x) - 2, sz(t.z) - 2, 4, 4); } });
     x.save(); x.translate(sx(h.pos.x), sz(h.pos.z)); x.rotate(h.out.hdg * S.D2R); x.fillStyle = '#39e07a'; x.beginPath(); x.moveTo(0, -10); x.lineTo(6, 8); x.lineTo(0, 4); x.lineTo(-6, 8); x.fill(); x.restore();
     const bar = 100 * m.mpp / S.NM, nice = [0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100].find(v => v > bar * 0.6) || 100, bl = nice * S.NM / m.mpp; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.moveTo(10, H - 12); x.lineTo(10 + bl, H - 12); x.stroke(); x.fillStyle = '#fff'; x.textAlign = 'left'; x.fillText(nice + ' nm', 14 + bl, H - 12);
-    x.fillText(S.terrain.offline ? 'Generated terrain (offline)' : 'Elevation: Mapzen / AWS Terrain Tiles', 10, H - 26);
+    x.fillText(S.terrain.credit(), 10, H - 26);
   }
   function routeTable() {
     const el = $('m-route'); if (!el) return; const g = G(), h = g.heli, R = S.route, gs = Math.max(60, h.out.gs * S.KT), ff = Math.max(g.sys.ffTotal * 3600, g.spec.eng.idleFF * 2 + g.spec.eng.sfc * g.spec.eng.xmsn / 1000 * 0.55);
@@ -156,7 +169,7 @@
   U.menu = () => {
     const g = G(), o = menuSel || (menuSel = Object.assign({ ac: 'uh60', icao: 'KHOP', state: 'cold', quality: 'med', mode: 'sticks', sens: 1, vol: 0.7 }, g.opts || {})), f = S.terrain.findField(o.icao), run = !!g.heli;
     $('menu').style.display = 'flex'; if (g.heli) g.paused = true;
-    $('menubox').innerHTML = `<h1>Rotor Wing Flight Simulator</h1><p class="dim">Real-world terrain streamed as you fly. Full cold-start procedures. Planning estimates and a simplified flight model: for entertainment, not training.</p>
+    $('menubox').innerHTML = `<h1>Rotor Wing Flight Simulator</h1><p class="dim">Real-world terrain and aerial imagery streamed as you fly. Full cold-start procedures. A simplified flight model: for entertainment, not training.</p>
       <h3>Aircraft</h3><div class="acs">${Object.values(S.AIRCRAFT).map(a => `<button data-ac="${a.id}" class="${o.ac === a.id ? 'on' : ''}">${a.name}</button>`).join('')}</div>
       <h3>Start at</h3><div class="row"><label>Airfield: type an ICAO code or name<input type="text" id="mn-q" placeholder="KHOP, Ramstein, Evansville..." autocomplete="off" autocapitalize="characters"></label></div><div class="row" id="mn-res"></div><p id="mn-f"><b>${f ? f.icao : ''}</b> ${f ? esc(f.name) + ', elevation ' + f.elev + ' ft' : ''}</p>
       <div class="row">${[['cold', 'Cold and dark'], ['ready', 'Running on the pad'], ['air', 'In flight']].map(s => `<button data-st="${s[0]}" class="${o.state === s[0] ? 'on' : ''}">${s[1]}</button>`).join('')}</div>
@@ -164,6 +177,7 @@
         <label>Stick sensitivity<input type="range" id="mn-sens" min="0.5" max="1.6" step="0.05" value="${o.sens}"></label><label>Sound<input type="range" id="mn-vol" min="0" max="1" step="0.05" value="${o.vol}"></label></div>
       <p class="dim">Left pad: slide up and down for collective (it stays where you leave it), left and right for pedals. Right pad: cyclic. Drag anywhere else to look around. TRIM holds the current attitude. A Bluetooth gamepad or a keyboard (arrows, W/S, A/D) also works.</p>
       <h3>Graphics</h3><div class="row">${['low', 'med', 'high'].map(q => `<button data-q="${q}" class="${o.quality === q ? 'on' : ''}">${q === 'med' ? 'Medium' : q[0].toUpperCase() + q.slice(1)}</button>`).join('')}</div>
+      <div class="row"><button data-img="1" class="${S.terrain.imagery ? 'on' : ''}">Photo terrain: ${S.terrain.imagery ? 'ON' : 'OFF'}</button><span class="dim">Uses more data. Elevation: Mapzen / AWS. Imagery: USGS National Map (US), Sentinel-2 cloudless by EOX (elsewhere).</span></div>
       <div class="row" style="margin-top:14px">${run ? '<button data-go="resume" class="on">Resume flight</button>' : ''}<button data-go="fly" class="${run ? '' : 'on'}">${run ? 'Start a new flight' : 'Fly'}</button></div>`;
   };
   function search(q) { q = q.trim().toUpperCase(); if (q.length < 2) return []; const a = [], b = []; for (const f of S.terrain.fields) { if (f.icao.startsWith(q) || f.icao === 'K' + q) a.push(f); else if (f.up.includes(q)) b.push(f); if (a.length > 8) break; } return a.concat(b).slice(0, 8); }
@@ -173,8 +187,8 @@
   U.onStart = () => { close(); $('fire').style.display = $('a-zoom').style.display = G().spec.weapons ? '' : 'none'; };
   U.init = () => {
     const B = (id, fn) => $(id).addEventListener('click', fn);
-    B('b-view', () => { const v = G().heli && G().cycleView(); $('b-view').textContent = 'View: ' + v; }); B('b-inst', () => { const g = G(); g.showPanel = !g.showPanel; $('panel').className = g.showPanel ? '' : 'hide'; $('b-inst').className = g.showPanel ? 'on' : ''; });
-    B('b-sw', () => open('sw')); B('b-chk', () => open('chk')); B('b-map', () => open('map', true)); B('b-svc', () => open('svc')); B('b-msn', () => open('msn')); B('b-wx', () => open('wx')); B('b-menu', () => { menuSel = null; U.menu(); });
+    B('b-view', () => { const v = G().heli && G().cycleView(); $('b-view').textContent = 'View: ' + v; }); B('b-inst', () => { const g = G(); g.setPanel(!g.showPanel); });
+    B('b-sw', () => open('sw', true)); B('b-chk', () => open('chk', true)); B('b-map', () => open('map', true)); B('b-svc', () => open('svc')); B('b-msn', () => open('msn')); B('b-wx', () => open('wx')); B('b-menu', () => { menuSel = null; U.menu(); });
     B('a-trim', () => { const g = G(); if (!g.heli) return; g.heli.setTrim(); g.sys.say(g.sys.fpsOK ? 'Trim set: holding this attitude' : 'Trim needs FPS'); });
     const hold = (id, key) => { const el = $(id); el.addEventListener('pointerdown', e => { S.input[key] = true; el.classList.add('on'); el.setPointerCapture(e.pointerId); }); const up = () => { S.input[key] = false; el.classList.remove('on'); }; el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); };
     hold('a-brake', 'brakeBtn'); hold('fire', 'fireBtn');
@@ -182,7 +196,7 @@
     B('a-zoom', () => { const g = G(); if (g.view !== 'cockpit') { g.view = 'cockpit'; g.sight = true; g.sightNarrow = false; } else if (!g.sight) { g.sight = true; g.sightNarrow = false; } else if (!g.sightNarrow) g.sightNarrow = true; else g.sight = false; $('a-zoom').textContent = g.sight ? (g.sightNarrow ? 'Sight x20' : 'Sight x5') : 'Sight'; });
     B('b-reset', () => G().reset());
     $('ov').addEventListener('click', e => {
-      const b = e.target.closest('button'), li = e.target.closest('li[data-chk]'), g = G(); if (li) { U.swPage = CHK[+li.dataset.chk][2]; U.page = null; return open('sw'); } if (!b) return; const d = b.dataset, sys = g.sys, h = g.heli;
+      const b = e.target.closest('button'), g = G(); if (!b) return; const d = b.dataset, sys = g.sys, h = g.heli;
       if (d.close) return close(); if (d.tab) { U.swPage = d.tab; return render(); }
       if (d.guard) { guards[d.guard] = performance.now() + 5000; return render(); } if (d.sw) { setSw(d.sw, +d.v); return syncSw(); }
       if (d.hb != null) { h.hdgBug = +d.hb === 0 ? Math.round(h.out.hdg) : S.wrap360(Math.round(h.hdgBug) + +d.hb); return syncSw(); }
@@ -203,7 +217,7 @@
     });
     $('ov').addEventListener('input', e => { const d = e.target.dataset; if (d.wx) { S.env[d.wx] = +e.target.value; const w = WX.find(q => q[0] === d.wx); $('wx-' + d.wx + '-v').textContent = w[5](+e.target.value); } sliders(); });
     $('menu').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const d = b.dataset, o = menuSel, g = G();
-      if (d.ac) o.ac = d.ac; if (d.st) o.state = d.st; if (d.q) o.quality = d.q; if (d.pick) o.icao = d.pick;
+      if (d.img) S.terrain.imagery = !S.terrain.imagery; if (d.ac) o.ac = d.ac; if (d.st) o.state = d.st; if (d.q) o.quality = d.q; if (d.pick) o.icao = d.pick;
       if (d.md) { o.mode = d.md; if (d.md === 'tilt') S.input.enableTilt().then(ok => { if (!ok) { o.mode = 'sticks'; U.menu(); } }); } if (d.cal) S.input.centerTilt();
       if (d.go) { o.sens = +$('mn-sens').value; o.vol = +$('mn-vol').value; applyOpts(); S.audio.start(); $('menu').style.display = 'none'; if (d.go === 'resume') { g.paused = false; g.opts = Object.assign(g.opts, { mode: o.mode, sens: o.sens, vol: o.vol }); S.terrain.quality = o.quality; return; } return g.start({ ...o }); }
       U.menu(); });

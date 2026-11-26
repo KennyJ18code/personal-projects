@@ -2,7 +2,7 @@
 (function () {
   const S = window.SIM, T3 = window.THREE, clamp = S.clamp, $ = id => document.getElementById(id);
   const G = S.game = { heli: null, sys: null, model: null, spec: null, field: null, view: 'chase', paused: true, loading: false, nav: {}, t: 0, opts: null,
-    svc: { fueling: false, target: 0 }, randFail: false, sight: false, aim: new T3.Vector3(0, 0, -1), showPanel: true, frame: 0 };
+    svc: { fueling: false, target: 0 }, panelPref: { chase: true, cockpit: false, flyby: false }, randFail: false, sight: false, aim: new T3.Vector3(0, 0, -1), showPanel: true, frame: 0 };
   let renderer, near, far, camN, camF, last = 0, loadObj = null, cable = null, flyby = null, failT = 0;
   const tq = new T3.Quaternion(), tv = new T3.Vector3(), tv2 = new T3.Vector3(), eul = new T3.Euler(0, 0, 0, 'YXZ'), ctl = { coll: 0, lon: 0, lat: 0, ped: 0 };
   S.sysSay = m => G.sys && G.sys.say(m);
@@ -10,7 +10,7 @@
   function init() {
     const cv = $('gl');
     try { renderer = new T3.WebGLRenderer({ canvas: cv, antialias: true, powerPreference: 'high-performance' }); } catch (e) { $('menubox').innerHTML = '<h1>3D graphics unavailable</h1><p>This device or browser could not start WebGL, which the simulator needs.</p>'; return; }
-    renderer.autoClear = false; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.autoClear = false; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = T3.PCFSoftShadowMap;
     near = new T3.Scene(); far = new T3.Scene(); camN = new T3.PerspectiveCamera(65, 1, 0.3, 46000); camF = new T3.PerspectiveCamera(65, 1, 400, 420000);
     S.terrain.init(near, far); S.sky.init(near, far); S.fx.init(near); S.terrain.loadFields(); S.input.init(); S.ui.init();
     try { G.opts = JSON.parse(localStorage.getItem('rwfs-opts') || 'null'); } catch (e) {}
@@ -57,7 +57,7 @@
         if (!G.sightQ) G.sightQ = h.q.clone().multiply(tq); eul.set(I.lookPitch - (G._lp || 0), I.lookYaw - (G._ly || 0), 0); G._lp = I.lookPitch; G._ly = I.lookYaw;
         const f = tv.set(0, 0, -1).applyQuaternion(G.sightQ), yaw = Math.atan2(-f.x, -f.z) + eul.y, pit = clamp(Math.asin(clamp(f.y, -1, 1)) + eul.x, -1.2, 0.5); eul.set(pit, yaw, 0); G.sightQ.setFromEuler(eul);
         camN.quaternion.copy(G.sightQ); tv.set(0, -0.8, -6.6).applyQuaternion(h.q); camN.position.copy(h.pos).add(tv).sub(ro); fov = G.sightNarrow ? 3.2 : 12;
-      } else { G.sightQ = null; camN.quaternion.copy(h.q).multiply(tq); tv.fromArray(spec.eye).applyQuaternion(h.q); camN.position.copy(h.pos).add(tv).sub(ro); fov = 72 / clamp(I.zoom, 0.7, 3); }
+      } else { G.sightQ = null; camN.quaternion.copy(h.q).multiply(tq); tv.fromArray(spec.eye).applyQuaternion(h.q); camN.position.copy(h.pos).add(tv).sub(ro); fov = 64 / clamp(I.zoom, 0.7, 3); }
       G.aim.set(0, 0, -1).applyQuaternion(camN.quaternion);
     } else if (G.view === 'flyby') {
       if (!flyby || flyby.distanceTo(h.pos) > 900) { flyby = h.pos.clone().addScaledVector(h.vel, 7).add(tv.set(40, 0, 25)); flyby.y = Math.max(S.terrain.height(flyby.x, flyby.z) + 6, h.pos.y - 15); }
@@ -107,7 +107,7 @@
     else if (loadObj) { near.remove(loadObj); near.remove(cable); loadObj = null; cable = null; }
     Tn.activeFields.forEach(f => { if (f.sock) { f.sock.rotation.y = -(env.windDir + 180) * S.D2R + Math.PI; f.sock.rotation.x = clamp(0.9 - env.windKt / 18, 0, 0.9); } });
     camera(dt); S.sky.update(env, h.pos, ro, dt); S.fx.update(dt, ro);
-    S.sky.dome.position.copy(camF.position); S.sky.stars.position.copy(camF.position); S.sky.sunMesh.position.add(camF.position);
+    S.sky.dome.position.copy(camF.position); S.sky.stars.position.copy(camF.position); S.sky.sunMesh.position.add(camF.position); S.sky.glare.position.add(camF.position);
     S.sky.clouds.forEach((c, i) => c.position.set(h.pos.x - ro.x, (i ? Math.max(env.cloudBase + 150, env.cloudTop) : env.cloudBase) - ro.y, h.pos.z - ro.z));
     // goggles and sight image
     const nv = sys.sw.nvg && sys.dc, gl = $('gl'), flt = G.sight && G.view === 'cockpit' ? 'grayscale(1) contrast(1.35) brightness(1.15)' : nv ? 'grayscale(1) brightness(1.5) sepia(1) hue-rotate(62deg) saturate(3.2) contrast(1.15)' : '';
@@ -115,9 +115,11 @@
     const gain = (nv || (G.sight && G.view === 'cockpit')) && S.sky.night > 0.3 ? 1 + S.sky.night * 9 : 1; S.sky.lights.forEach(L => { L.h.intensity *= gain; L.d.intensity *= Math.sqrt(gain); });
     renderer.clear(); renderer.render(far, camF); renderer.clearDepth(); renderer.render(near, camN);
     if (G.showPanel && G.frame % 3 === 0) S.drawPanel($('panel'), h, sys, G.nav, env);
+    if (G.view === 'cockpit' && !G.sight && G.frame % 4 === 1) { S.drawPanel(S.panelCanvas, h, sys, G.nav, env); S.panelTex.needsUpdate = true; }
     if (G.frame % 8 === 0) S.ui.tick();
     S.audio.update && S.audio.update(h, sys, G.view === 'cockpit');
   }
-  G.cycleView = () => { const v = ['chase', 'cockpit', 'flyby']; G.view = v[(v.indexOf(G.view) + 1) % v.length]; G.sight = false; S.input.lookYaw = S.input.lookPitch = 0; S.input.zoom = 1; flyby = null; return G.view; };
+  G.setPanel = on => { G.showPanel = on; G.panelPref[G.view] = on; $('panel').className = on ? '' : 'hide'; $('b-inst').className = on ? 'on' : ''; };
+  G.cycleView = () => { const v = ['chase', 'cockpit', 'flyby']; G.view = v[(v.indexOf(G.view) + 1) % v.length]; G.sight = false; S.input.lookYaw = 0; S.input.lookPitch = G.view === 'cockpit' ? -0.16 : 0; S.input.zoom = 1; flyby = null; G.showPanel = G.panelPref[G.view]; $('panel').className = G.showPanel ? '' : 'hide'; $('b-inst').className = G.showPanel ? 'on' : ''; return G.view; };
   window.addEventListener('load', init);
 })();

@@ -5,9 +5,12 @@
   const S = root.SIM, T3 = root.THREE, clamp = S.clamp;
   const URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
   const ZN = 12, ZF = 9, N = 256;
-  const Q = { low: { ring: 1, seg: [96, 64], far: 64, trees: 500 }, med: { ring: 2, seg: [128, 96, 48], far: 96, trees: 1100 }, high: { ring: 2, seg: [192, 128, 64], far: 128, trees: 1800 } };
+  const Q = { low: { ring: 1, seg: [96, 64], far: 64, trees: 700, img: [14, 13], fimg: 10 }, med: { ring: 2, seg: [128, 96, 48], far: 96, trees: 1600, img: [15, 14, 13], fimg: 10 }, high: { ring: 2, seg: [192, 128, 64], far: 128, trees: 2600, img: [16, 15, 14], fimg: 11 } };
+  // Photo imagery draped on the terrain. USGS aerial imagery (public domain) inside the United States, Sentinel-2 cloudless by EOX elsewhere.
+  const IMG = { usgs: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}', eox: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg' };
+  const IMAX = { usgs: 16, eox: 14 }; let imgQ = [], imgActive = 0;
   const tiles = new Map(); let queue = [], active = 0, cv = null, cx = null;
-  const Tn = S.terrain = { quality: 'med', offline: false, live: 0, synth: 0, near: null, far: null, ro: new T3.Vector3(), fields: [], activeFields: [], loadedNear: 0, wantNear: 0 };
+  const Tn = S.terrain = { imagery: true, imgSrc: 'usgs', imgTiles: 0, quality: 'med', offline: false, live: 0, synth: 0, near: null, far: null, ro: new T3.Vector3(), fields: [], activeFields: [], loadedNear: 0, wantNear: 0 };
 
   // Generated fallback: rolling hills and ridges, continuous across tiles.
   function synth(gx, gz) {
@@ -70,6 +73,48 @@
   };
   Tn.ready = (x, z) => { const c = S.proj.tileAt(ZN, x, z), t = tiles.get(ZN + '/' + c.tx + '/' + c.ty); return !!(t && t.state === 2); };
 
+  // ---- photo imagery ----
+  function imgPump() {
+    while (imgActive < 10 && imgQ.length) {
+      imgQ.sort((a, b) => b.pri - a.pri); const j = imgQ.pop(); if (j.t.imgGen !== j.gen) { continue; } imgActive++;
+      const img = new Image(); img.crossOrigin = 'anonymous'; let src = Tn.imgSrc, tried = 0;
+      const go = () => { img.src = IMG[src].replace('{z}', j.z).replace('{x}', j.x).replace('{y}', j.y); };
+      const fin = ok => { imgActive--; if (j.t.imgGen === j.gen) { if (ok) { try { j.job.cx.drawImage(img, j.i * j.job.px, j.j * j.job.px, j.job.px, j.job.px); j.job.got++; } catch (e) {} } if (--j.job.left === 0) imgDone(j.t, j.job); } imgPump(); };
+      img.onload = () => fin(true); img.onerror = () => { if (!tried && src === 'usgs' && j.z <= IMAX.eox) { tried = 1; src = 'eox'; go(); } else fin(false); }; go();
+    }
+  }
+  function loadImagery(t, iz, pri) {
+    const n = Math.pow(2, iz - t.z), size = Math.min(2048, n * 256), c = document.createElement('canvas'); c.width = c.height = size; const cx2 = c.getContext('2d');
+    cx2.fillStyle = '#56633f'; cx2.fillRect(0, 0, size, size); t.imgGen = (t.imgGen || 0) + 1; t.imgLoading = iz;
+    const job = { c, cx: cx2, px: size / n, left: n * n, got: 0, iz };
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) imgQ.push({ t, gen: t.imgGen, job, i, j, z: iz, x: t.x * n + i, y: t.y * n + j, pri });
+    imgPump();
+  }
+  function imgDone(t, job) {
+    t.imgLoading = 0; if (job.got === 0) { t.imgFail = (t.imgFail || 0) + 1; return; }
+    if (t.z === ZN) { // dark-green mask says where the photo shows woodland, so 3D trees stand where the trees are
+      try { const m = document.createElement('canvas'); m.width = m.height = 128; const mx = m.getContext('2d', { willReadFrequently: true }); mx.drawImage(job.c, 0, 0, 128, 128); const d = mx.getImageData(0, 0, 128, 128).data, mk = new Uint8Array(128 * 128);
+        for (let i = 0, p = 0; i < 128 * 128; i++, p += 4) { const r = d[p], g = d[p + 1], b = d[p + 2]; mk[i] = (g > r * 1.03 && g > b * 1.08 && r + g + b < 300 && g > 40) ? 1 : 0; } t.mask = mk; treeKey = ''; } catch (e) {}
+    }
+    const tex = new T3.CanvasTexture(job.c); tex.flipY = false; tex.anisotropy = 8; tex.generateMipmaps = true; tex.minFilter = T3.LinearMipmapLinearFilter;
+    if (t.tex) { t.tex.dispose(); t.mat && t.mat.dispose(); } t.tex = tex; t.mat = imgMaterial(tex, t.z !== ZN); t.imgZ = job.iz; Tn.imgTiles++;
+    tex.onUpdate = () => { job.c.width = job.c.height = 1; tex.onUpdate = null; };
+    if (t.mesh) t.mesh.material = t.mat;
+  }
+  function imgMaterial(tex, far) {
+    const m = new T3.MeshLambertMaterial({ map: tex });
+    if (!far) { m.onBeforeCompile = sh => { sh.uniforms.detailMap = { value: detailTex }; sh.uniforms.dScale = { value: S.proj.tileSize(ZN) / 7 };
+        sh.fragmentShader = 'uniform sampler2D detailMap;\nuniform float dScale;\n' + sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n float dA = texture2D(detailMap, vUv * dScale).r; float dB = texture2D(detailMap, vUv * dScale * 0.11).r; diffuseColor.rgb *= 0.42 + 0.78 * mix(dB, dA, 0.55);'); };
+      m.customProgramCacheKey = () => 'imgNear'; }
+    return m;
+  }
+  Tn.wantImagery = (t, ring, far) => {
+    if (!Tn.imagery || Tn.offline || t.synth || typeof Image === 'undefined') return;
+    const q = Q[Tn.quality], want = Math.min(far ? q.fimg : q.img[Math.min(ring, q.img.length - 1)], IMAX[Tn.imgSrc], t.z + 3);
+    if (t.imgLoading || (t.imgFail || 0) > 1) return;
+    if (!t.imgZ || t.imgZ < want || t.imgZ > want + 1) loadImagery(t, want, far ? 1 : 10 - ring * 3);
+  };
+
   // ---- colouring ----
   Tn.forest = (x, z) => S.fbm(x / 1400 + 31, z / 1400 - 12, 3);
   const col = [0, 0, 0];
@@ -90,14 +135,14 @@
   }
 
   // ---- tile meshes ----
-  let matNear, matFar;
+  let matNear, matFar, detailTex;
   function materials() {
     const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'), im = x.createImageData(256, 256);
     for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
       const a = S.vnoise(i / 5.3, j / 5.3), b = S.vnoise(i / 21 + 9, j / 21 + 4), v = 190 + (a - 0.5) * 70 + (b - 0.5) * 60 + (S.hash2(i, j) - 0.5) * 40, k = (j * 256 + i) * 4;
       im.data[k] = im.data[k + 1] = im.data[k + 2] = clamp(v, 0, 255); im.data[k + 3] = 255;
     }
-    x.putImageData(im, 0, 0); const tex = new T3.CanvasTexture(c); tex.wrapS = tex.wrapT = T3.RepeatWrapping; tex.anisotropy = 4;
+    x.putImageData(im, 0, 0); const tex = new T3.CanvasTexture(c); tex.wrapS = tex.wrapT = T3.RepeatWrapping; tex.anisotropy = 4; detailTex = tex;
     matNear = new T3.MeshLambertMaterial({ vertexColors: true, map: tex }); matFar = new T3.MeshLambertMaterial({ vertexColors: true });
   }
   function build(t, seg, far) {
@@ -112,7 +157,7 @@
       pos[q * 3] = fx * sz; pos[q * 3 + 1] = h - (far ? 25 : 0); pos[q * 3 + 2] = fz * sz;
       nor[q * 3] = -dx * il; nor[q * 3 + 1] = il; nor[q * 3 + 2] = -dz * il;
       shade(h, 1 - il, o.x + fx * sz, o.z + fz * sz, lat); colr[q * 3] = col[0]; colr[q * 3 + 1] = col[1]; colr[q * 3 + 2] = col[2];
-      uv[q * 2] = (o.x + fx * sz) / 55; uv[q * 2 + 1] = (o.z + fz * sz) / 55;
+      uv[q * 2] = fx; uv[q * 2 + 1] = fz;
     }
     const idx = []; for (let j = 0; j < seg; j++) for (let i = 0; i < seg; i++) { const a = j * n1 + i, b = a + 1, c = a + n1, e = c + 1; idx.push(a, c, b, b, c, e); }
     // skirts hide the hairline gaps between neighbouring tiles
@@ -122,15 +167,15 @@
     const g = new T3.BufferGeometry();
     g.setAttribute('position', new T3.BufferAttribute(pos, 3)); g.setAttribute('normal', new T3.BufferAttribute(nor, 3)); g.setAttribute('color', new T3.BufferAttribute(colr, 3)); g.setAttribute('uv', new T3.BufferAttribute(uv, 2));
     g.setIndex(cnt > 65535 ? new T3.Uint32BufferAttribute(idx, 1) : new T3.Uint16BufferAttribute(idx, 1)); g.computeBoundingSphere();
-    const m = new T3.Mesh(g, far ? matFar : matNear); m.userData.o = o; m.matrixAutoUpdate = false; return m;
+    if (!far) detailTex.repeat.set(sz / 55, sz / 55); const m = new T3.Mesh(g, t.mat || (far ? matFar : matNear)); m.receiveShadow = !far; m.userData.o = o; m.matrixAutoUpdate = false; return m;
   }
-  function drop(t) { if (t.mesh) { t.mesh.parent && t.mesh.parent.remove(t.mesh); t.mesh.geometry.dispose(); t.mesh = null; t.seg = 0; } }
+  function drop(t) { if (t.mesh) { t.mesh.parent && t.mesh.parent.remove(t.mesh); t.mesh.geometry.dispose(); t.mesh = null; t.seg = 0; } if (t.tex) { t.tex.dispose(); t.mat.dispose(); t.tex = t.mat = null; t.imgZ = 0; } t.imgGen = (t.imgGen || 0) + 1; t.imgLoading = 0; t.mask = null; }
 
   Tn.init = (sceneNear, sceneFar) => {
     materials(); Tn.near = new T3.Group(); Tn.far = new T3.Group(); sceneNear.add(Tn.near); sceneFar.add(Tn.far);
     Tn.objs = new T3.Group(); sceneNear.add(Tn.objs); initTrees(sceneNear);
   };
-  Tn.reset = () => { tiles.forEach(drop); tiles.clear(); queue = []; lastT = null; Tn.live = Tn.synth = 0; fails = 0; Tn.activeFields.forEach(f => removeField(f)); Tn.activeFields = []; treeKey = ''; };
+  Tn.reset = () => { tiles.forEach(drop); tiles.clear(); queue = []; imgQ = []; lastT = null; Tn.live = Tn.synth = 0; fails = 0; Tn.imgTiles = 0; const la = S.proj.lat0, lo = S.proj.lon0; Tn.imgSrc = ((la > 24 && la < 50 && lo > -125.5 && lo < -66) || (la > 51 && la < 72 && lo > -170 && lo < -129) || (la > 18 && la < 23 && lo > -161 && lo < -154)) ? 'usgs' : 'eox'; Tn.activeFields.forEach(f => removeField(f)); Tn.activeFields = []; treeKey = ''; };
 
   let buildBudget = 0;
   Tn.update = (x, z, dt) => {
@@ -138,11 +183,11 @@
     let loaded = 0, total = 0;
     for (let dj = -q.ring; dj <= q.ring; dj++) for (let di = -q.ring; di <= q.ring; di++) {
       const ring = Math.max(Math.abs(di), Math.abs(dj)), t = getTile(ZN, c.tx + di, c.ty + dj), seg = q.seg[Math.min(ring, q.seg.length - 1)]; want.add(t.key); total++;
-      if (t.state === 0) request(t, null, 10 - ring); else if (t.state === 2) { loaded++; if (t.seg !== seg && buildBudget > 0) { buildBudget--; drop(t); t.mesh = build(t, seg, false); t.seg = seg; Tn.near.add(t.mesh); } }
+      if (t.state === 0) request(t, null, 10 - ring); else if (t.state === 2) { loaded++; if (t.seg !== seg && buildBudget > 0) { buildBudget--; if (t.mesh) { t.mesh.parent.remove(t.mesh); t.mesh.geometry.dispose(); } t.mesh = build(t, seg, false); t.seg = seg; Tn.near.add(t.mesh); } if (t.mesh) Tn.wantImagery(t, ring, false); }
     }
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
       const t = getTile(ZF, cf.tx + di, cf.ty + dj); want.add(t.key);
-      if (t.state === 0) request(t, null, 3); else if (t.state === 2 && !t.mesh && buildBudget > 0) { buildBudget--; t.mesh = build(t, q.far, true); t.seg = q.far; Tn.far.add(t.mesh); }
+      if (t.state === 0) request(t, null, 3); else if (t.state === 2 && !t.mesh && buildBudget > 0) { buildBudget--; t.mesh = build(t, q.far, true); t.seg = q.far; Tn.far.add(t.mesh); } if (t.mesh && t.z === ZF) Tn.wantImagery(t, 0, true);
     }
     Tn.loadedNear = loaded; Tn.wantNear = total;
     tiles.forEach(t => { if (t.mesh && !want.has(t.key)) drop(t); });
@@ -159,7 +204,7 @@
     const paint = (g, r, gg, b) => { const n = g.attributes.position.count, c = new Float32Array(n * 3); for (let i = 0; i < n; i++) { const y = g.attributes.position.getY(i), k = 0.7 + y * 0.5; c[i * 3] = r * k; c[i * 3 + 1] = gg * k; c[i * 3 + 2] = b * k; } g.setAttribute('color', new T3.BufferAttribute(c, 3)); };
     paint(cone, 0.16, 0.33, 0.14); paint(trunk, 0.3, 0.22, 0.14);
     const g = mergeGeo([cone.toNonIndexed(), trunk.toNonIndexed()]);
-    trees = new T3.InstancedMesh(g, new T3.MeshLambertMaterial({ vertexColors: true }), 1800); trees.count = 0; trees.frustumCulled = false; scene.add(trees);
+    trees = new T3.InstancedMesh(g, new T3.MeshLambertMaterial({ vertexColors: true }), 2600); trees.count = 0; trees.frustumCulled = false; scene.add(trees);
   }
   function mergeGeo(list) {
     let n = 0; list.forEach(g => { n += g.attributes.position.count; }); const P = new Float32Array(n * 3), Nn = new Float32Array(n * 3), C = new Float32Array(n * 3); let o = 0;
@@ -167,14 +212,15 @@
     const g = new T3.BufferGeometry(); g.setAttribute('position', new T3.BufferAttribute(P, 3)); g.setAttribute('normal', new T3.BufferAttribute(Nn, 3)); g.setAttribute('color', new T3.BufferAttribute(C, 3)); return g;
   }
   S.mergeGeo = mergeGeo;
+  function maskAt(x, z) { const p = S.proj, c = p.tileAt(ZN, x, z), t = tiles.get(ZN + '/' + c.tx + '/' + c.ty); if (!t || !t.mask) return -1; const o = p.tileOrigin(ZN, c.tx, c.ty), sz = p.tileSize(ZN); return t.mask[clamp(Math.floor((z - o.z) / sz * 128), 0, 127) * 128 + clamp(Math.floor((x - o.x) / sz * 128), 0, 127)]; }
   function updateTrees(x, z) {
-    const cell = 34, cxi = Math.round(x / 240), czi = Math.round(z / 240), key = cxi + ',' + czi + ',' + Tn.loadedNear;
+    const cell = 26, cxi = Math.round(x / 240), czi = Math.round(z / 240), key = cxi + ',' + czi + ',' + Tn.loadedNear;
     if (key === treeKey || !trees) return; treeKey = key;
     const max = Q[Tn.quality].trees, R = 760, x0 = cxi * 240, z0 = czi * 240, ro = Tn.ro; let n = 0;
     for (let gz = Math.floor((z0 - R) / cell); gz <= (z0 + R) / cell && n < max; gz++) for (let gx = Math.floor((x0 - R) / cell); gx <= (x0 + R) / cell && n < max; gx++) {
-      const hh = S.hash2(gx, gz); if (hh > 0.62) continue;
-      const wx = (gx + S.hash2(gx + 7, gz)) * cell, wz = (gz + S.hash2(gx, gz + 13)) * cell, f = Tn.forest(wx, wz);
-      if (f < 0.5 && hh > 0.05) continue; if ((wx - x0) ** 2 + (wz - z0) ** 2 > R * R) continue;
+      const hh = S.hash2(gx, gz); if (hh > 0.8) continue;
+      const wx = (gx + S.hash2(gx + 7, gz)) * cell, wz = (gz + S.hash2(gx, gz + 13)) * cell;
+      const mk = maskAt(wx, wz); if (mk === 0 && hh > 0.012) continue; if (mk < 0) { const f = Tn.forest(wx, wz); if (f < 0.5 && hh > 0.05) continue; } if ((wx - x0) ** 2 + (wz - z0) ** 2 > R * R) continue;
       const h = Tn.height(wx, wz); if (h < 1 || Math.abs(Tn.height(wx + 8, wz) - h) > 5 || nearField(wx, wz)) continue;
       const s = 9 + hh * 22; dummy.position.set(wx, h, wz); dummy.scale.set(s, s * (0.9 + S.hash2(gz, gx) * 0.5), s); dummy.rotation.y = hh * 20; dummy.updateMatrix(); trees.setMatrixAt(n++, dummy.matrix);
     }
@@ -243,11 +289,12 @@
   function buildField(f) {
     if (!mats) fieldMats(); const g = f.geo, grp = new T3.Group(), ry = Math.atan2(-g.dz, g.dx), H = Tn.height;
     const lights = [];
-    g.rw.forEach(r => { grp.add(strip(r.ax, r.az, r.bx, r.bz, r.w, mats.rw, 0.3, 30));
+    const photo = Tn.imagery && !Tn.offline;
+    g.rw.forEach(r => { if (!photo) grp.add(strip(r.ax, r.az, r.bx, r.bz, r.w, mats.rw, 0.3, 30));
       const L = Math.hypot(r.bx - r.ax, r.bz - r.az), dx = (r.bx - r.ax) / L, dz = (r.bz - r.az) / L; for (let d = 0; d <= L; d += 60) for (const s of [-1, 1]) { const x = r.ax + dx * d - dz * s * (r.w / 2 + 2), z = r.az + dz * d + dx * s * (r.w / 2 + 2); lights.push(x, H(x, z) + 0.6, z); } });
     // taxi link and ramp
-    if (g.rw.length) grp.add(strip(g.rx, g.rz, g.rx - g.px * 190, g.rz - g.pz * 190, 18, mats.apron, 0.22, 20, 4));
-    grp.add(strip(g.rx - g.dx * 170, g.rz - g.dz * 170, g.rx + g.dx * 170, g.rz + g.dz * 170, 90, mats.apron, 0.25, 20, 12));
+    if (g.rw.length && !photo) grp.add(strip(g.rx, g.rz, g.rx - g.px * 190, g.rz - g.pz * 190, 18, mats.apron, 0.22, 20, 4));
+    if (!photo) grp.add(strip(g.rx - g.dx * 170, g.rz - g.dz * 170, g.rx + g.dx * 170, g.rz + g.dz * 170, 90, mats.apron, 0.25, 20, 12));
     const flat = (x, z, s, mat) => { const y = Math.max(H(x - s, z - s), H(x + s, z - s), H(x - s, z + s), H(x + s, z + s), H(x, z)) + 0.32; const m = new T3.Mesh(new T3.PlaneGeometry(s * 2, s * 2), mat); m.rotation.x = -Math.PI / 2; m.rotation.z = ry; m.position.set(x, y, z); return m; };
     g.pads.forEach(p => grp.add(flat(p.x, p.z, 13, mats.pad)));
     const blue = []; g.pads.forEach(p => { for (let a = 0; a < 8; a++) { const x = p.x + Math.cos(a * 0.785) * 14, z = p.z + Math.sin(a * 0.785) * 14; blue.push(x, H(x, z) + 0.5, z); } });
@@ -266,5 +313,6 @@
     f.obj = grp; Tn.objs.add(grp); treeKey = '';
   }
   Tn.nearestField = (x, z, max) => { let b = null, bd = (max || 1e12) ** 2; for (const f of Tn.fields) { const d = (f.x - x) ** 2 + (f.z - z) ** 2; if (d < bd) { bd = d; b = f; } } return b; };
+  Tn.credit = () => Tn.offline ? 'Generated terrain (offline)' : 'Elevation: Mapzen / AWS. Imagery: ' + (!Tn.imagery ? 'off' : Tn.imgSrc === 'usgs' ? 'USGS National Map' : 'Sentinel-2 cloudless by EOX (Copernicus data 2016-17)');
   Tn.ZN = ZN; Tn.ZF = ZF; Tn.tileData = (z, x, y) => { const t = tiles.get(z + '/' + x + '/' + y); return t && t.state === 2 ? t : null; };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -12,6 +12,14 @@
     const sg = new T3.BufferGeometry(); sg.setAttribute('position', new T3.Float32BufferAttribute(sp, 3)); Sky.stars = new T3.Points(sg, new T3.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, fog: false })); far.add(Sky.stars);
     const disc = new T3.Mesh(new T3.CircleGeometry(4200, 20), new T3.MeshBasicMaterial({ color: 0xfff6d8, fog: false, depthWrite: false })); Sky.sunMesh = disc; far.add(disc);
     Sky.lights = [near, far].map(sc => { const h = new T3.HemisphereLight(0xbfd8ff, 0x4a4a3a, 0.6), d = new T3.DirectionalLight(0xfff2dd, 1); sc.add(h, d, d.target); sc.fog = new T3.Fog(0xbcd0e0, 200, 40000); return { h, d }; });
+    // the sun casts the aircraft's shadow: a tight shadow box that follows the helicopter
+    const sd = Sky.lights[0].d; sd.castShadow = true; sd.shadow.mapSize.set(1024, 1024); const sc = sd.shadow.camera; sc.left = sc.bottom = -30; sc.right = sc.top = 30; sc.near = 10; sc.far = 2600; sd.shadow.bias = -0.0006; sd.shadow.normalBias = 0.05;
+    // sun glare and cumulus puffs
+    const blob = (n, f) => { const c2 = document.createElement('canvas'); c2.width = c2.height = n; const x2 = c2.getContext('2d'), im2 = x2.createImageData(n, n); for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const k = (j * n + i) * 4, a = f((i + 0.5) / n * 2 - 1, (j + 0.5) / n * 2 - 1, i, j); im2.data[k] = im2.data[k + 1] = im2.data[k + 2] = 255; im2.data[k + 3] = S.clamp(a, 0, 1) * 255; } x2.putImageData(im2, 0, 0); return new T3.CanvasTexture(c2); };
+    Sky.glare = new T3.Sprite(new T3.SpriteMaterial({ map: blob(64, (u, v) => Math.pow(Math.max(0, 1 - Math.hypot(u, v)), 2.6)), color: 0xfff1c9, transparent: true, depthWrite: false, depthTest: false, fog: false, blending: T3.AdditiveBlending })); Sky.glare.scale.setScalar(60000); far.add(Sky.glare);
+    const puffTex = blob(128, (u, v, i, j) => { const r = Math.hypot(u, v * 1.25 + 0.15); return (1 - r) * 2.2 * (0.45 + 0.9 * S.fbm(i / 22, j / 22, 4)) - (v > 0.35 ? (v - 0.35) * 2 : 0); });
+    Sky.puffMat = new T3.SpriteMaterial({ map: puffTex, color: 0xffffff, transparent: true, depthWrite: false, fog: true });
+    Sky.puffs = []; for (let i = 0; i < 280; i++) { const s = new T3.Sprite(Sky.puffMat); s.visible = false; s.renderOrder = 6; far.add(s); Sky.puffs.push(s); } Sky.cells = []; Sky.cloudKey = '';
     // cloud deck: one noisy sheet at the base, one at the top
     const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'), im = x.createImageData(256, 256);
     for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) { const k = (j * 256 + i) * 4, v = S.fbm(i / 38, j / 38, 5); im.data[k] = im.data[k + 1] = im.data[k + 2] = 255; im.data[k + 3] = v * 255; }
@@ -30,15 +38,26 @@
     Sky.sunMesh.position.copy(Sky.sunDir).multiplyScalar(130000); Sky.sunMesh.lookAt(0, 0, 0); Sky.sunMesh.visible = el > -0.03 && ov < 0.9; Sky.sunMesh.material.color.setRGB(1, S.lerp(0.55, 0.97, clamp(el * 4, 0, 1)), S.lerp(0.3, 0.85, clamp(el * 4, 0, 1)));
     // cloud layer and visibility
     const base = env.cloudBase, ctop = Math.max(base + 150, env.cloudTop), alt = pos.y;
-    const hole = S.fbm(pos.x / 2600, pos.z / 2600, 3), inLayer = alt > base && alt < ctop && env.cloudCover > 0.05 && hole < env.cloudCover * 1.15;
+    // lay out cumulus cells around the aircraft; overcast uses the solid deck instead
+    const cs = 4200, ccx = Math.round(pos.x / cs), ccz = Math.round(pos.z / cs), key = ccx + ',' + ccz + ',' + env.cloudCover + ',' + base + ',' + ctop, deck = env.cloudCover > 0.78;
+    if (key !== Sky.cloudKey) { Sky.cloudKey = key; Sky.cells = []; let n = 0; const thick = Math.min(ctop - base, 1600);
+      for (let dz = -7; dz <= 7; dz++) for (let dx = -7; dx <= 7; dx++) { const gx = ccx + dx, gz = ccz + dz, hsh = S.hash2(gx * 3 + 11, gz * 5 - 7); if (deck || hsh > env.cloudCover * 1.1 || dx * dx + dz * dz > 50) continue;
+        const x0 = (gx + S.hash2(gx, gz) - 0.5) * cs, z0 = (gz + S.hash2(gz, gx) - 0.5) * cs, big = 0.7 + S.hash2(gx + 5, gz + 9) * 0.9, r = 1100 * big; Sky.cells.push({ x: x0, z: z0, r });
+        for (let k = 0; k < 5 && n < Sky.puffs.length; k++) { const p = Sky.puffs[n++], a = S.hash2(gx * 7 + k, gz) * 6.283, d = S.hash2(gx, gz * 7 + k) * r * 0.75, sz = (1300 + S.hash2(gx + k, gz - k) * 1500) * big; p.userData.w = [x0 + Math.cos(a) * d, base + sz * 0.3 + (k === 0 ? thick * 0.35 : S.hash2(k, gx + gz) * thick * 0.3), z0 + Math.sin(a) * d]; p.scale.set(sz * 1.5, sz, 1); p.visible = true; } }
+      for (let i = n; i < Sky.puffs.length; i++) Sky.puffs[i].visible = false; }
+    for (const p of Sky.puffs) if (p.visible) p.position.set(p.userData.w[0] - ro.x, p.userData.w[1] - ro.y, p.userData.w[2] - ro.z);
+    let inCell = deck; if (!deck) for (const c of Sky.cells) if ((pos.x - c.x) ** 2 + (pos.z - c.z) ** 2 < c.r * c.r) { inCell = true; break; }
+    const inLayer = alt > base && alt < ctop && env.cloudCover > 0.05 && inCell;
     Sky.inCloud = inLayer; const edge = Math.min(Math.abs(alt - base), Math.abs(alt - ctop));
     let vis = env.vis; if (inLayer) vis = Math.min(vis, 60 + edge * 6);
     Sky.visNow = Sky.visNow == null ? vis : Sky.visNow + (vis - Sky.visNow) * Math.min(1, dt * 2.5);
     const fogC = inLayer ? new T3.Color(0xb9bfc4).multiplyScalar(0.12 + day * 0.88) : hor;
-    Sky.clouds.forEach((m, i) => { m.visible = env.cloudCover > 0.05; m.material.alphaTest = clamp(1 - env.cloudCover * 1.25, 0.02, 0.95); m.material.color.setScalar(i ? 0.25 + day * 0.75 : 0.18 + day * 0.6); m.material.opacity = 0.96; });
+    Sky.puffMat.color.copy(new T3.Color(1, 1, 1).lerp(new T3.Color(1.0, 0.72, 0.5), dusk * 0.6)).multiplyScalar(0.08 + day * 0.92); Sky.glare.position.copy(Sky.sunDir).multiplyScalar(125000); Sky.glare.material.opacity = S.clamp(el * 6, 0, 1) * (1 - ov) * 0.85; Sky.glare.visible = el > -0.02;
+    Sky.clouds.forEach((m, i) => { m.visible = deck; m.material.alphaTest = clamp(1 - env.cloudCover * 1.25, 0.02, 0.95); m.material.color.setScalar(i ? 0.25 + day * 0.75 : 0.18 + day * 0.6); m.material.opacity = 0.96; });
     Sky.cloudTex.offset.set(pos.x / 15000, -pos.z / 15000);
     Sky.lights.forEach((L, i) => { const sc = i ? Sky.far : Sky.near; sc.fog.color.copy(fogC); sc.fog.near = Sky.visNow * 0.08; sc.fog.far = Sky.visNow;
-      L.d.position.copy(Sky.sunDir).multiplyScalar(1000); L.d.intensity = clamp(Math.sin(Math.max(el, 0)) * 1.25 + 0.05, 0.02, 1.15) * (1 - ov * 0.6) + (el < 0 ? 0.05 : 0); L.d.color.setRGB(1, S.lerp(0.7, 0.96, day), S.lerp(0.5, 0.88, day));
+      if (i === 0) { L.d.target.position.set(pos.x - ro.x, pos.y - ro.y, pos.z - ro.z); L.d.position.copy(L.d.target.position).addScaledVector(Sky.sunDir, 700); L.d.castShadow = el > 0.06 && ov < 0.85; } else L.d.position.copy(Sky.sunDir).multiplyScalar(1000);
+      L.d.intensity = clamp(Math.sin(Math.max(el, 0)) * 1.25 + 0.05, 0.02, 1.15) * (1 - ov * 0.6) + (el < 0 ? 0.05 : 0); L.d.color.setRGB(1, S.lerp(0.7, 0.96, day), S.lerp(0.5, 0.88, day));
       L.h.intensity = 0.07 + day * 0.55 + ov * day * 0.1; });
     if (S.terrain.fieldMats) { S.terrain.fieldMats.light.opacity = S.terrain.fieldMats.blue.opacity = clamp(Sky.night * 1.6, 0, 1); }
   };

@@ -8,7 +8,7 @@ A browser helicopter simulator for phone, tablet or desktop: UH-60M Black Hawk, 
 
 - **Flight model** (`js/physics.js`): blade-element thrust with dynamic inflow, momentum-theory power, translational lift, ground effect, vortex ring state, blade stall, autorotation, tail-rotor torque balance, tandem rotors, wheel contact with static friction, sling-load pendulum, SAS / FPS / hold modes.
 - **Systems** (`js/systems.js`): battery, APU, generators, fuel selectors and pumps, engine start with hot starts, power levers, rotor brake, hydraulics, icing, fire, caution panel, failures. Every cockpit switch feeds this.
-- **Terrain** (`js/terrain.js`): elevation streamed from Mapzen terrarium tiles on AWS Open Data, meshed around the aircraft. With no connection it falls back to generated terrain. Airports and runways from OurAirports (public domain).
+- **Terrain** (`js/terrain.js`): elevation streamed from Mapzen terrarium tiles on AWS Open Data, draped with aerial imagery (USGS National Map in the United States, Sentinel-2 cloudless by EOX elsewhere). 3D trees stand where the photo shows woodland. With no connection it falls back to generated terrain. Airports and runways from OurAirports (public domain).
 - **World** (`js/world.js`): time of day, cloud, wind and gusts, Apache gun / rockets / missiles and range targets, route navigation, missions.
 - **Cockpit** (`js/panel.js`, `js/ui.js`): glass flight and engine displays, switch pages, start checklist, map and route planner, refuel / cargo / rearm service, weather and failure controls.
 - **Controls** (`js/input.js`): two touch sticks, tilt, gamepad, keyboard; synthesised sound.
@@ -19,4 +19,4 @@ Open `index.html` from any web server (GitHub Pages serves it as is). On iPhone 
 
 ## Credits
 
-Elevation: Mapzen terrain tiles, hosted by AWS Open Data. Airports: OurAirports. 3D: three.js r128 (MIT).
+Elevation: Mapzen terrain tiles, hosted by AWS Open Data. Imagery: USGS National Map (public domain); Sentinel-2 cloudless - https://s2maps.eu by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2016 and 2017), CC BY 4.0. Airports: OurAirports. 3D: three.js r128 (MIT).

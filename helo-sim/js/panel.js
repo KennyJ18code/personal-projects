@@ -4,12 +4,14 @@
   const S = root.SIM, clamp = S.clamp;
   const GRN = '#39e07a', WHT = '#e8f0ea', AMB = '#ffb52e', RED = '#ff4a3d', CYN = '#4fd8ff', MAG = '#ff5be1', DIM = '#5d7a68', BG = '#05080a';
   S.baroSet = 1013;
+  // shared image of the panel used by the displays in the 3D cockpit
+  if (typeof document !== 'undefined' && root.THREE) { const pc = S.panelCanvas = document.createElement('canvas'); pc._w = 1100; pc._h = 440; pc.width = 1100; pc.height = 440; const t = S.panelTex = new root.THREE.CanvasTexture(pc); t.minFilter = root.THREE.LinearFilter; t.generateMipmaps = false; t.anisotropy = 4; }
   S.drawPanel = (cv, heli, sys, nav, env) => {
-    const dpr = Math.min(root.devicePixelRatio || 1, 2), W = cv.clientWidth, H = cv.clientHeight; if (!W || !H) return;
+    const dpr = cv._w ? 1 : Math.min(root.devicePixelRatio || 1, 2), W = cv._w || cv.clientWidth, H = cv._h || cv.clientHeight; if (!W || !H) return;
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.fillStyle = '#0d0f10'; x.fillRect(0, 0, W, H);
     const o = heli.out, pw = sys.avionics, gap = 4, wP = Math.round(W * 0.42), wE = Math.round(W * 0.33), wM = W - wP - wE - gap * 2;
-    const fs = clamp(H / 15, 8, 15); x.font = `600 ${fs}px ui-monospace,Menlo,Consolas,monospace`; x.textBaseline = 'middle';
+    const fs = clamp(H / 15, 8, cv._w ? 30 : 15); x.font = `600 ${fs}px ui-monospace,Menlo,Consolas,monospace`; x.textBaseline = 'middle';
     const scr = (sx, sw) => { x.fillStyle = pw ? BG : '#020303'; x.fillRect(sx, 0, sw, H); x.strokeStyle = '#2a2f31'; x.lineWidth = 2; x.strokeRect(sx + 1, 1, sw - 2, H - 2); };
     scr(0, wP); scr(wP + gap, wM); scr(wP + wM + gap * 2, wE); if (!pw) return;
     const txt = (s, px, py, c, al) => { x.fillStyle = c || WHT; x.textAlign = al || 'left'; x.fillText(s, px, py); };
