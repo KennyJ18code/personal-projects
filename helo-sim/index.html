@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Rotor Wing Flight Simulator</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#05080a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root{--bg:#05080a;--pan:#0c1114;--pan2:#141c20;--line:#27343a;--ink:#d6e2da;--dim:#7d9488;--grn:#39e07a;--amb:#ffb52e;--red:#ff4a3d;--cyn:#4fd8ff;
+  --ph:min(36vh,210px);--pw:min(24vw,190px);--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px);--sb:env(safe-area-inset-bottom,0px);--st:env(safe-area-inset-top,0px);
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html,body{margin:0;height:100%;background:#000;color:var(--ink);font:13px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;overscroll-behavior:none;touch-action:none}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+#view{position:fixed;inset:0;touch-action:none}
+#top{position:fixed;top:calc(4px + var(--st));left:calc(6px + var(--sl));right:calc(6px + var(--sr));display:flex;gap:4px;z-index:6;overflow-x:auto}
+button,select,input{font:600 12px var(--mono);color:var(--ink);background:rgba(12,17,20,.86);border:1px solid var(--line);border-radius:4px;padding:8px 9px;min-height:36px;letter-spacing:.04em}
+button{cursor:pointer;text-transform:uppercase;white-space:nowrap}
+button.on{background:var(--grn);color:#03140a;border-color:var(--grn)} button.warn{background:var(--red);color:#fff;border-color:var(--red)} button.amb{background:var(--amb);color:#201400;border-color:var(--amb)}
+button:disabled{opacity:.4}
+:focus-visible{outline:2px solid var(--cyn);outline-offset:1px}
+#top button{flex:1 0 auto}
+#panel{position:fixed;left:calc(var(--pw) + var(--sl));right:calc(var(--pw) + var(--sr));bottom:var(--sb);height:var(--ph);width:calc(100% - 2*var(--pw) - var(--sl) - var(--sr));z-index:4}
+#panel.hide{display:none}
+.pad{position:fixed;bottom:var(--sb);height:var(--ph);width:var(--pw);z-index:5;touch-action:none;background:rgba(8,12,14,.38);border:1px solid rgba(80,110,96,.45);border-radius:10px}
+#padL{left:var(--sl)} #padR{right:var(--sr)}
+.pad .knob{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(57,224,122,.35);border:2px solid var(--grn);pointer-events:none}
+.pad .lab{position:absolute;left:0;right:0;top:3px;text-align:center;font:600 9px var(--mono);color:var(--dim);letter-spacing:.1em;pointer-events:none}
+.pad .cross{position:absolute;inset:50% 8% auto 8%;height:1px;background:rgba(120,150,135,.35);pointer-events:none}
+.pad .crossv{position:absolute;inset:8% auto 8% 50%;width:1px;background:rgba(120,150,135,.35);pointer-events:none}
+#acts{position:fixed;right:calc(var(--pw) + var(--sr) + 6px);bottom:calc(var(--ph) + var(--sb) + 6px);display:flex;gap:6px;z-index:5;flex-wrap:wrap;justify-content:flex-end;max-width:60vw}
+#actsL{position:fixed;left:calc(6px + var(--sl));bottom:calc(var(--ph) + var(--sb) + 6px);display:flex;gap:6px;z-index:5}
+#acts button,#actsL button{min-height:42px;min-width:58px}
+#fire{background:rgba(160,30,20,.85);border-color:var(--red)}
+#msgs{position:fixed;left:50%;transform:translateX(-50%);top:calc(48px + var(--st));z-index:7;display:flex;flex-direction:column;gap:3px;align-items:center;pointer-events:none;max-width:86vw}
+#msgs div{background:rgba(5,8,10,.85);border-left:3px solid var(--amb);padding:5px 10px;font:600 12px var(--mono);border-radius:2px}
+#ext{position:fixed;left:calc(8px + var(--sl));top:calc(48px + var(--st));font:600 12px var(--mono);color:var(--grn);text-shadow:0 0 3px #000,0 0 3px #000;z-index:3;pointer-events:none;white-space:pre}
+#ret{position:fixed;left:50%;top:42%;width:34px;height:34px;margin:-17px 0 0 -17px;border:1.5px solid var(--grn);border-radius:50%;z-index:3;pointer-events:none;display:none}
+#ret:after{content:"";position:absolute;left:50%;top:50%;width:3px;height:3px;margin:-1.5px;background:var(--grn)}
+#ret.lock{border-color:var(--red);box-shadow:0 0 0 3px rgba(255,74,61,.35)}
+#ov{position:fixed;left:calc(8px + var(--sl));right:calc(8px + var(--sr));top:calc(46px + var(--st));bottom:calc(var(--ph) + var(--sb) + 8px);background:rgba(8,12,14,.94);border:1px solid var(--line);border-radius:6px;z-index:8;display:none;flex-direction:column;overflow:hidden}
+#ov.on{display:flex} #ov.full{bottom:calc(8px + var(--sb))}
+#ovh{display:flex;gap:4px;padding:6px;border-bottom:1px solid var(--line);overflow-x:auto;flex:none}
+#ovh b{font:700 12px var(--mono);letter-spacing:.14em;color:var(--dim);padding:10px 6px;flex:none}
+#ovb{flex:1;overflow:auto;padding:8px;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px}
+.swc{background:var(--pan2);border:1px solid var(--line);border-radius:4px;padding:6px;display:flex;flex-direction:column;gap:5px}
+.swc span{font:600 10px var(--mono);letter-spacing:.08em;color:var(--dim)}
+.swc .seg{display:flex} .swc .seg button{flex:1;border-radius:0;padding:8px 2px;min-height:38px;font-size:11px}
+.swc .seg button:first-child{border-radius:4px 0 0 4px}.swc .seg button:last-child{border-radius:0 4px 4px 0}
+.swc.guard{border-color:#7a2a22}.swc.guard .cover{background:repeating-linear-gradient(45deg,#7a2a22,#7a2a22 6px,#3a1512 6px,#3a1512 12px);color:#fff}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 8px}
+.row label{font:600 10px var(--mono);color:var(--dim);letter-spacing:.08em;display:flex;flex-direction:column;gap:3px;flex:1 1 130px}
+input[type=range]{padding:0;min-height:30px;accent-color:var(--grn);width:100%}
+input[type=text]{width:100%;-webkit-user-select:text;user-select:text}
+h3{font:700 11px var(--mono);letter-spacing:.14em;color:var(--dim);margin:10px 0 6px;text-transform:uppercase}
+p{margin:0 0 8px;max-width:70ch;color:var(--ink)} .dim{color:var(--dim)}
+ol.chk{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+ol.chk li{display:flex;gap:8px;align-items:center;background:var(--pan2);border:1px solid var(--line);border-radius:4px;padding:7px 9px;font:600 12px var(--mono)}
+ol.chk li i{flex:none;width:18px;height:18px;border-radius:50%;border:2px solid var(--dim);font-style:normal}
+ol.chk li.ok{color:var(--dim)} ol.chk li.ok i{background:var(--grn);border-color:var(--grn)} ol.chk li.next{border-color:var(--amb)}
+ol.chk li small{color:var(--dim);font-weight:400;margin-left:auto;text-align:right}
+table{border-collapse:collapse;width:100%;font:12px var(--mono)} td,th{padding:5px 7px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap} td:first-child,th:first-child{text-align:left} th{color:var(--dim);font-weight:400;font-size:10px}
+#map{width:100%;height:100%;display:block;touch-action:none;background:#0a1416;border-radius:4px}
+.mapwrap{position:relative;height:100%;min-height:200px}.mapwrap .tools{position:absolute;left:6px;top:6px;display:flex;gap:4px;flex-wrap:wrap}
+#menu{position:fixed;inset:0;z-index:20;background:linear-gradient(180deg,rgba(5,8,10,.82),rgba(5,8,10,.96));display:flex;align-items:center;justify-content:center;padding:calc(12px + var(--st)) calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sl));overflow:auto;touch-action:pan-y}
+#menu .box{width:min(760px,100%);background:var(--pan);border:1px solid var(--line);border-radius:8px;padding:16px;max-height:100%;overflow:auto;touch-action:pan-y}
+#menu h1{font:700 17px var(--mono);letter-spacing:.16em;margin:0 0 4px;color:#fff;text-transform:uppercase}
+#menu .acs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
+#menu .acs button{min-height:54px;white-space:normal}
+#load{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:9;background:rgba(5,8,10,.9);border:1px solid var(--line);padding:12px 18px;border-radius:6px;font:600 13px var(--mono);display:none;text-align:center}
+#rot{position:fixed;inset:0;z-index:30;background:#05080a;display:none;align-items:center;justify-content:center;text-align:center;padding:30px;font:600 15px var(--mono)}
+@media (orientation:portrait) and (max-width:700px){#rot{display:flex}}
+#nvg{position:fixed;inset:0;pointer-events:none;z-index:2;display:none;background:radial-gradient(circle at 50% 45%,rgba(0,0,0,0) 46%,rgba(0,0,0,.92) 62%)}
+#crash{position:fixed;inset:0;z-index:15;background:rgba(40,0,0,.6);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;text-align:center;font:700 16px var(--mono);padding:20px}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="nvg"></div>
+<div id="view"></div>
+<div id="ext"></div><div id="ret"></div>
+<div id="top">
+  <button id="b-view">View</button><button id="b-inst" class="on">Gauges</button><button id="b-sw">Cockpit</button><button id="b-chk">Checklist</button>
+  <button id="b-map">Map</button><button id="b-svc">Service</button><button id="b-msn">Mission</button><button id="b-wx">Wx / Fail</button><button id="b-menu">Menu</button>
+</div>
+<div id="msgs"></div>
+<div id="actsL"><button id="a-brake">Brake</button><button id="a-trim">Trim</button></div>
+<div id="acts"><button id="a-hook" style="display:none">Hook up</button><button id="a-rel" style="display:none" class="amb">Release</button><button id="a-zoom" style="display:none">Sight</button><button id="fire" style="display:none">Fire</button></div>
+<canvas id="panel"></canvas>
+<div id="padL" class="pad"><div class="lab">COLLECTIVE &#8597; &nbsp; PEDALS &#8596;</div><div class="crossv"></div><div class="knob" id="knobL"></div></div>
+<div id="padR" class="pad"><div class="lab">CYCLIC</div><div class="cross"></div><div class="crossv"></div><div class="knob" id="knobR"></div></div>
+<div id="ov"><div id="ovh"></div><div id="ovb"></div></div>
+<div id="load"></div>
+<div id="crash"><div id="crashmsg"></div><button id="b-reset">Reset on the pad</button></div>
+<div id="menu"><div class="box" id="menubox"></div></div>
+<div id="rot">Rotate your device to landscape to fly.</div>
+<script src="three.min.js"></script>
+<script src="js/fields.js"></script>
+<script src="js/core.js"></script>
+<script src="js/systems.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/terrain.js"></script>
+<script src="js/models.js"></script>
+<script src="js/world.js"></script>
+<script src="js/panel.js"></script>
+<script src="js/input.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+<script>if ('serviceWorker' in navigator && location.protocol !== 'file:') addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });</script>
+</body>
+</html>

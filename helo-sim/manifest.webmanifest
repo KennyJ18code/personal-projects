@@ -1,0 +1,23 @@
+{
+ "name": "Rotor Wing Flight Simulator",
+ "short_name": "Rotor Wing",
+ "start_url": "./index.html",
+ "scope": "./",
+ "display": "fullscreen",
+ "orientation": "landscape",
+ "background_color": "#05080a",
+ "theme_color": "#05080a",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any maskable"
+  }
+ ]
+}
