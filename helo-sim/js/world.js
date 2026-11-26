@@ -43,7 +43,7 @@
     if (key !== Sky.cloudKey) { Sky.cloudKey = key; Sky.cells = []; let n = 0; const thick = Math.min(ctop - base, 1600);
       for (let dz = -7; dz <= 7; dz++) for (let dx = -7; dx <= 7; dx++) { const gx = ccx + dx, gz = ccz + dz, hsh = S.hash2(gx * 3 + 11, gz * 5 - 7); if (deck || hsh > env.cloudCover * 1.1 || dx * dx + dz * dz > 50) continue;
         const x0 = (gx + S.hash2(gx, gz) - 0.5) * cs, z0 = (gz + S.hash2(gz, gx) - 0.5) * cs, big = 0.7 + S.hash2(gx + 5, gz + 9) * 0.9, r = 1100 * big; Sky.cells.push({ x: x0, z: z0, r });
-        for (let k = 0; k < 5 && n < Sky.puffs.length; k++) { const p = Sky.puffs[n++], a = S.hash2(gx * 7 + k, gz) * 6.283, d = S.hash2(gx, gz * 7 + k) * r * 0.75, sz = (1300 + S.hash2(gx + k, gz - k) * 1500) * big; p.userData.w = [x0 + Math.cos(a) * d, base + sz * 0.3 + (k === 0 ? thick * 0.35 : S.hash2(k, gx + gz) * thick * 0.3), z0 + Math.sin(a) * d]; p.scale.set(sz * 1.5, sz, 1); p.visible = true; } }
+        for (let k = 0; k < 5 && n < Sky.puffs.length; k++) { const p = Sky.puffs[n++], a = S.hash2(gx * 7 + k, gz) * 6.283, d = S.hash2(gx, gz * 7 + k) * r * 0.75, sz = (1000 + S.hash2(gx + k, gz - k) * 1100) * big; p.userData.w = [x0 + Math.cos(a) * d, base + sz * 0.3 + (k === 0 ? thick * 0.35 : S.hash2(k, gx + gz) * thick * 0.3), z0 + Math.sin(a) * d]; p.scale.set(sz * 1.5, sz, 1); p.visible = true; } }
       for (let i = n; i < Sky.puffs.length; i++) Sky.puffs[i].visible = false; }
     for (const p of Sky.puffs) if (p.visible) p.position.set(p.userData.w[0] - ro.x, p.userData.w[1] - ro.y, p.userData.w[2] - ro.z);
     let inCell = deck; if (!deck) for (const c of Sky.cells) if ((pos.x - c.x) ** 2 + (pos.z - c.z) ** 2 < c.r * c.r) { inCell = true; break; }

@@ -102,7 +102,7 @@
     if (t.mesh) t.mesh.material = t.mat;
   }
   function imgMaterial(tex, far) {
-    const m = new T3.MeshLambertMaterial({ map: tex });
+    const m = new T3.MeshLambertMaterial({ map: tex, color: 0xa4a4a4 }); // imagery is already lit by the real sun, so tone it down
     if (!far) { m.onBeforeCompile = sh => { sh.uniforms.detailMap = { value: detailTex }; sh.uniforms.dScale = { value: S.proj.tileSize(ZN) / 7 };
         sh.fragmentShader = 'uniform sampler2D detailMap;\nuniform float dScale;\n' + sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n float dA = texture2D(detailMap, vUv * dScale).r; float dB = texture2D(detailMap, vUv * dScale * 0.11).r; diffuseColor.rgb *= 0.42 + 0.78 * mix(dB, dA, 0.55);'); };
       m.customProgramCacheKey = () => 'imgNear'; }
