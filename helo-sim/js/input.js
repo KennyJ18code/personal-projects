@@ -1,7 +1,7 @@
 /* Pilot input: touch sticks, device tilt, gamepad and keyboard, plus synthesised sound. */
 (function (root) {
   const S = root.SIM, clamp = S.clamp;
-  const I = S.input = { coll: 0, lon: 0, lat: 0, ped: 0, mode: 'sticks', sens: 1, fire: false, brake: false, lookYaw: 0, lookPitch: 0, orbit: 0.4, orbitP: 0.22, zoom: 1, tiltOK: false, keys: {} };
+  const I = S.input = { coll: 0, lon: 0, lat: 0, ped: 0, mode: 'sticks', sens: 1, fire: false, brake: false, lookYaw: 0, lookPitch: 0, panX: 0, panY: 0, orbit: 0.4, orbitP: 0.22, zoom: 1, tiltOK: false, keys: {} };
   let tilt = { b: 0, g: 0, b0: null, g0: null }, padR = null, padL = null;
   const expo = v => v * (0.45 + 0.55 * Math.abs(v));
   I.init = () => {
@@ -14,7 +14,8 @@
     // right pad: cyclic, springs back to centre
     bind(R, (k, e) => { const r = R.getBoundingClientRect(); if (k === 'up') { padR = null; return; } padR = { x: clamp(((e.clientX - r.left) / r.width - 0.5) * 2.3, -1, 1), y: clamp(((e.clientY - r.top) / r.height - 0.5) * 2.3, -1, 1) }; });
     // anywhere else on the view: look around / orbit, pinch handled by wheel on desktop
-    bind(view, (k, e, st) => { if (k !== 'move') return; const dx = e.clientX - st.x, dy = e.clientY - st.y; I.lookYaw = clamp(I.lookYaw - dx * 0.005, -2.3, 2.3); I.lookPitch = clamp(I.lookPitch - dy * 0.004, -1.2, 0.9); I.orbit -= dx * 0.006; I.orbitP = clamp(I.orbitP + dy * 0.004, -0.3, 1.3); });
+    bind(view, (k, e, st) => { if (k === 'down') { st.mv = 0; st.t = performance.now(); return; } if (k === 'up') { if (st.mv < 9 && performance.now() - st.t < 600 && S.game.tap) S.game.tap(e.clientX, e.clientY); return; }
+      const dx = e.clientX - st.x, dy = e.clientY - st.y; st.mv += Math.abs(dx) + Math.abs(dy); if (st.mv > 9) I.dragged = true; I.panX += dx; I.panY += dy; const sc = (I.lookScale || 1); I.lookYaw = clamp(I.lookYaw + dx * 0.005 * sc, -2.3, 2.3); I.lookPitch = clamp(I.lookPitch + dy * 0.004 * sc, -1.45, 1.42); I.orbit -= dx * 0.006; I.orbitP = clamp(I.orbitP + dy * 0.004, -0.3, 1.3); });
     view.addEventListener('wheel', e => { I.zoom = clamp(I.zoom * (e.deltaY > 0 ? 1.1 : 0.9), 0.4, 4); e.preventDefault(); }, { passive: false });
     I.knobs = () => { knobL.style.left = (50 + I.ped * 38) + '%'; knobL.style.top = (92 - I.coll * 84) + '%'; knobR.style.left = (50 + I.lat * 40) + '%'; knobR.style.top = (50 - I.lon * 40) + '%'; };
     addEventListener('keydown', e => { I.keys[e.code] = true; if (e.code === 'Space') e.preventDefault(); }); addEventListener('keyup', e => { I.keys[e.code] = false; });
@@ -57,7 +58,7 @@
     A.on = true;
   };
   const burst = (dur, f0, gain, type) => { if (!A.on) return; const c = A.ctx, s = c.createBufferSource(); s.buffer = A.noise; const f = c.createBiquadFilter(); f.type = type || 'lowpass'; f.frequency.value = f0; const g = c.createGain(); g.gain.setValueAtTime(gain, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur); s.connect(f); f.connect(g); g.connect(A.master); s.start(c.currentTime, Math.random()); s.stop(c.currentTime + dur); };
-  A.gun = () => burst(0.09, 900, 0.5); A.rocket = () => burst(0.9, 1600, 0.45, 'bandpass'); A.boom = big => burst(big ? 1.6 : 0.5, big ? 180 : 420, big ? 0.7 : 0.25); A.crash = () => burst(2.5, 140, 1);
+  A.click = () => burst(0.035, 3200, 0.35, 'highpass'); A.gun = () => burst(0.09, 900, 0.5); A.rocket = () => burst(0.9, 1600, 0.45, 'bandpass'); A.boom = big => burst(big ? 1.6 : 0.5, big ? 180 : 420, big ? 0.7 : 0.25); A.crash = () => burst(2.5, 140, 1);
   A.update = (heli, sys, inside) => {
     if (!A.on) return; const c = A.ctx, t = c.currentTime, s = heli.s, nr = sys.nr, k = inside ? 0.75 : 1;
     A.master.gain.setTargetAtTime(A.vol, t, 0.1);

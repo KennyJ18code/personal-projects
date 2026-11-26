@@ -85,27 +85,26 @@
     const P = new T3.Group(); P.position.set(0, ey - 0.53, ez - 0.72); P.rotation.x = -0.24; g.add(P);
     P.add(box(W * 0.97, 0.5, 0.05, M.panel, 0, 0, -0.03));
     if (tandem) { screen(0.26, 0.25, 0, 0.42, -0.16, 0.02, 0, P); screen(0.2, 0.25, 0.675, 1, 0.14, 0.02, 0, P); }
-    else { for (const s of [1, -1]) { screen(0.3, 0.29, 0, 0.42, s * (ex + 0.02), 0.03, 0, P); screen(0.235, 0.29, 0.675, 1, s * (ex - 0.3), 0.03, 0, P); } screen(0.16, 0.26, 0.43, 0.665, 0, 0.03, 0, P); const sb = new T3.Mesh(new T3.PlaneGeometry(0.3, 0.15), M.stby); sb.position.set(0, -0.19, 0.002); P.add(sb); }
-    for (let i = 0; i < 6; i++) P.add(cyl(0.012, 0.012, 0.02, M.bezel, (tandem ? -0.3 : -w * 0.9) + i * 0.05, -0.21, 0.01, 'z', 8));
+    else { for (const s of [1, -1]) { screen(0.3, 0.29, 0, 0.42, s * (ex + 0.02), 0.03, 0, P); screen(0.235, 0.29, 0.675, 1, s * (ex - 0.3), 0.03, 0, P); } screen(0.16, 0.26, 0.43, 0.665, 0, 0.03, 0, P); }
     // glareshield with master warning and caution lamps
     g.add(box(W, 0.03, 0.26, M.panel, 0, ey - 0.27, ez - 0.8, 0.08), box(W, 0.05, 0.03, M.panel, 0, ey - 0.285, ez - 0.675));
     o.mw = new T3.Mesh(new T3.BoxGeometry(0.07, 0.035, 0.012), new T3.MeshBasicMaterial({ color: 0x2a1210 })); o.mc = new T3.Mesh(new T3.BoxGeometry(0.07, 0.035, 0.012), new T3.MeshBasicMaterial({ color: 0x2a1210 }));
     o.mw.position.set(ex - 0.06, ey - 0.285, ez - 0.657); o.mc.position.set(ex + 0.04, ey - 0.285, ez - 0.657); g.add(o.mw, o.mc);
     // consoles, seats, flight controls
     if (!tandem) {
-      g.add(box(0.4, 0.42, 1.25, M.panel, 0, ey - 1.02, ez - 0.05)); const top = new T3.Mesh(new T3.PlaneGeometry(0.38, 1.2), M.console); top.rotation.x = -Math.PI / 2; top.position.set(0, ey - 0.805, ez - 0.05); g.add(top);
-      g.add(box(0.38, 0.05, 0.7, M.panel, 0, ey + 0.7, ez - 0.05)); const oh = new T3.Mesh(new T3.PlaneGeometry(0.36, 0.68), M.overhead); oh.rotation.x = Math.PI / 2; oh.position.set(0, ey + 0.672, ez - 0.05); g.add(oh);
-      o.pcl = [-1, 1].map(s => { const l = new T3.Group(); l.add(box(0.03, 0.14, 0.03, M.metal, 0, -0.07, 0), box(0.05, 0.04, 0.05, s < 0 ? M.yellow : M.red, 0, -0.15, 0)); l.position.set(s * 0.06, ey + 0.67, ez - 0.3); g.add(l); return l; });
+      g.add(box(0.4, 0.42, 1.25, M.panel, 0, ey - 1.02, ez - 0.05));
+      o.pcl = [];
       g.add(box(0.5, 0.78, 0.1, M.seat, -ex, ey - 0.55, ez + 0.3, -0.1), box(0.5, 0.1, 0.5, M.seat, -ex, ey - 0.98, ez + 0.05), box(0.26, 0.2, 0.09, M.seat, -ex, ey - 0.02, ez + 0.36));
     } else { g.add(box(0.22, 0.3, 0.9, M.panel, -w * 0.8, ey - 0.75, ez), box(0.22, 0.3, 0.9, M.panel, w * 0.8, ey - 0.75, ez)); o.pcl = []; }
     o.cyc = new T3.Group(); o.cyc.add(cyl(0.016, 0.016, 0.62, M.dark, 0, 0.31, 0, 'y', 8), box(0.05, 0.13, 0.05, M.dark, 0, 0.66, -0.01, -0.3)); o.cyc.position.set(ex, ey - 1.2, ez - 0.42); g.add(o.cyc);
     o.col = new T3.Group(); o.col.add(cyl(0.018, 0.018, 0.5, M.dark, 0, 0, -0.25, 'z', 8), box(0.06, 0.07, 0.12, M.dark, 0, 0.02, -0.52)); o.col.position.set(ex - (tandem ? 0.3 : 0.33), ey - 0.98, ez + 0.2); g.add(o.col);
+    if (S.buildPanels) S.buildPanels(o, spec, tandem, g, P);
     g.traverse(m => { if (m.isMesh) { m.receiveShadow = true; m.userData.inside = true; } }); g.visible = false; return o;
   }
 
   function uh60() {
     const g = new T3.Group(), o = { rotors: [], group: g };
-    g.add(loft([[-6.05, 0.2, -0.62, 0.26], [-5.6, 0.68, -0.52, 0.56], [-4.7, 1.05, -0.38, 0.8, 3.2], [-3.5, 1.16, -0.32, 0.92, 3.6], [-1.5, 1.18, -0.3, 0.95, 4], [1.2, 1.15, -0.28, 0.93, 4], [2.4, 0.85, -0.1, 0.75, 3], [3.6, 0.5, 0.1, 0.5], [9.2, 0.26, 0.38, 0.3], [10.4, 0.14, 0.6, 0.24]], M.od));
+    o.hull = loft([[-6.05, 0.2, -0.62, 0.26], [-5.6, 0.68, -0.52, 0.56], [-4.7, 1.05, -0.38, 0.8, 3.2], [-3.5, 1.16, -0.32, 0.92, 3.6], [-1.5, 1.18, -0.3, 0.95, 4], [1.2, 1.15, -0.28, 0.93, 4], [2.4, 0.85, -0.1, 0.75, 3], [3.6, 0.5, 0.1, 0.5], [9.2, 0.26, 0.38, 0.3], [10.4, 0.14, 0.6, 0.24]], M.od); g.add(o.hull);
     g.add(loft([[-5.3, 0.62, -0.2, 0.36, 3], [-4.6, 1.045, 0.02, 0.44, 3.4], [-3.6, 1.155, 0.12, 0.5, 3.6], [-3.3, 1.1, 0.12, 0.5, 3.6]], M.glass));
     g.add(loft([[-3.0, 0.6, 0.72, 0.3, 3], [-2.0, 0.85, 0.82, 0.4, 3], [2.2, 0.85, 0.82, 0.4, 3], [3.4, 0.4, 0.6, 0.25]], M.od2));
     g.add(box(0.05, 0.75, 0.06, M.od2, 0, 0.1, -4.75, 0.55), ball(0.2, M.dark, 0, -1.02, -5.55), box(0.02, 0.3, 0.5, M.dark, 0, 0.75, -4.2, 0.5), box(0.02, 0.3, 0.5, M.dark, 0, -1.35, -3.9, -0.5));
@@ -121,7 +120,7 @@
   }
   function ah64() {
     const g = new T3.Group(), o = { rotors: [], group: g };
-    g.add(loft([[-6.7, 0.18, -0.75, 0.2], [-6.0, 0.42, -0.65, 0.42], [-5.0, 0.56, -0.5, 0.62, 3], [-3.4, 0.6, -0.42, 0.75, 3.2], [-1.2, 0.62, -0.38, 0.82, 3.4], [1.4, 0.58, -0.3, 0.78, 3], [2.8, 0.38, -0.05, 0.5], [8.6, 0.2, 0.42, 0.24], [9.6, 0.12, 0.6, 0.2]], M.od));
+    o.hull = loft([[-6.7, 0.18, -0.75, 0.2], [-6.0, 0.42, -0.65, 0.42], [-5.0, 0.56, -0.5, 0.62, 3], [-3.4, 0.6, -0.42, 0.75, 3.2], [-1.2, 0.62, -0.38, 0.82, 3.4], [1.4, 0.58, -0.3, 0.78, 3], [2.8, 0.38, -0.05, 0.5], [8.6, 0.2, 0.42, 0.24], [9.6, 0.12, 0.6, 0.2]], M.od); g.add(o.hull);
     g.add(loft([[-5.3, 0.36, 0.05, 0.3, 3.4], [-4.6, 0.5, 0.2, 0.42, 3.6], [-3.3, 0.52, 0.42, 0.5, 3.6], [-2.0, 0.54, 0.6, 0.55, 3.6], [-0.9, 0.5, 0.62, 0.5, 3.4]], M.glass));
     for (const z of [-4.55, -3.3, -2.05]) g.add(box(1.1, 0.04, 0.05, M.od2, 0, z > -3 ? 1.12 : z > -4 ? 0.9 : 0.6, z), box(0.04, 0.5, 0.05, M.od2, -0.52, z > -3 ? 0.85 : 0.65, z), box(0.04, 0.5, 0.05, M.od2, 0.52, z > -3 ? 0.85 : 0.65, z));
     g.add(loft([[-1.2, 0.5, 0.75, 0.42, 3], [1.6, 0.5, 0.78, 0.42, 3], [2.6, 0.3, 0.6, 0.25]], M.od2));
@@ -143,7 +142,7 @@
   }
   function ch47() {
     const g = new T3.Group(), o = { rotors: [], group: g };
-    g.add(loft([[-7.8, 0.35, -0.75, 0.45], [-7.3, 0.95, -0.6, 0.9, 3], [-6.4, 1.25, -0.42, 1.18, 3.6], [-5.2, 1.3, -0.4, 1.25, 5], [5.4, 1.3, -0.4, 1.25, 5], [6.6, 1.2, -0.2, 1.1, 4], [7.5, 0.9, 0.2, 0.75, 3]], M.od));
+    o.hull = loft([[-7.8, 0.35, -0.75, 0.45], [-7.3, 0.95, -0.6, 0.9, 3], [-6.4, 1.25, -0.42, 1.18, 3.6], [-5.2, 1.3, -0.4, 1.25, 5], [5.4, 1.3, -0.4, 1.25, 5], [6.6, 1.2, -0.2, 1.1, 4], [7.5, 0.9, 0.2, 0.75, 3]], M.od); g.add(o.hull);
     g.add(loft([[-7.45, 0.82, -0.28, 0.42, 3], [-6.9, 1.12, -0.05, 0.55, 3.6], [-6.1, 1.275, 0.08, 0.6, 4], [-5.7, 1.26, 0.08, 0.58, 4]], M.glass));
     g.add(box(0.06, 0.9, 0.06, M.od2, 0, 0.1, -6.95, 0.6), box(0.05, 0.75, 0.05, M.od2, -0.8, 0.05, -6.7, 0.55), box(0.05, 0.75, 0.05, M.od2, 0.8, 0.05, -6.7, 0.55));
     g.add(loft([[-7.0, 0.3, 0.9, 0.3], [-6.4, 0.55, 1.3, 0.65, 3], [-5.2, 0.6, 1.35, 0.7, 3], [-3.6, 0.45, 1.05, 0.35, 3], [3.6, 0.42, 1.0, 0.25, 3]], M.od2));
@@ -172,7 +171,7 @@
     o.spot.intensity = pw && (sw.land || sw.search) ? (sw.land && sw.search ? 3.2 : 2.2) : 0;
     const cp = o.cp; if (cp && cp.group.visible) {
       const blink = (t % 0.7) < 0.42; cp.mw.material.color.copy(pw && sys.warnings && sys.warnings.length && blink ? M.lampRed : M.lampOff); cp.mc.material.color.copy(pw && sys.cautions && sys.cautions.length ? M.lampAmb : M.lampOff);
-      cp.pcl.forEach((l, i) => { l.rotation.x = (sw['pcl' + (i + 1)] - 1) * -0.55; }); cp.cyc.rotation.set(-heli.eff.lon * 0.22, 0, -heli.eff.lat * 0.22); cp.col.rotation.x = heli.eff.coll * 0.5;
+      if (cp.ctl) S.updatePanels(cp, sys, heli, dt, night); cp.cyc.rotation.set(-heli.eff.lon * 0.22, 0, -heli.eff.lat * 0.22); cp.col.rotation.x = heli.eff.coll * 0.5;
     }
   };
   S.buildLoad = kg => { mats(); const g = new T3.Group(), s = clamp(Math.cbrt(kg / 400), 0.9, 2.6); g.add(box(1.2 * s, 1.0 * s, 1.2 * s, M.crate, 0, 0, 0)); g.add(box(1.25 * s, 0.08, 1.25 * s, M.dark, 0, 0.2 * s, 0)); g.add(box(1.25 * s, 0.08, 1.25 * s, M.dark, 0, -0.2 * s, 0)); g.traverse(m => { if (m.isMesh) m.castShadow = true; }); g.userData.top = 0.5 * s; return g; };

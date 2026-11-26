@@ -4,7 +4,7 @@
   const G = S.game = { heli: null, sys: null, model: null, spec: null, field: null, view: 'chase', paused: true, loading: false, nav: {}, t: 0, opts: null,
     svc: { fueling: false, target: 0 }, panelPref: { chase: true, cockpit: false, flyby: false }, randFail: false, sight: false, aim: new T3.Vector3(0, 0, -1), showPanel: true, frame: 0 };
   let renderer, near, far, camN, camF, last = 0, loadObj = null, cable = null, flyby = null, failT = 0;
-  const tq = new T3.Quaternion(), tv = new T3.Vector3(), tv2 = new T3.Vector3(), eul = new T3.Euler(0, 0, 0, 'YXZ'), ctl = { coll: 0, lon: 0, lat: 0, ped: 0 };
+  const m4 = new T3.Matrix4(); const tq = new T3.Quaternion(), tv = new T3.Vector3(), tv2 = new T3.Vector3(), eul = new T3.Euler(0, 0, 0, 'YXZ'), ctl = { coll: 0, lon: 0, lat: 0, ped: 0 };
   S.sysSay = m => G.sys && G.sys.say(m);
 
   function init() {
@@ -12,6 +12,7 @@
     try { renderer = new T3.WebGLRenderer({ canvas: cv, antialias: true, powerPreference: 'high-performance' }); } catch (e) { $('menubox').innerHTML = '<h1>3D graphics unavailable</h1><p>This device or browser could not start WebGL, which the simulator needs.</p>'; return; }
     renderer.autoClear = false; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = T3.PCFSoftShadowMap;
     near = new T3.Scene(); far = new T3.Scene(); camN = new T3.PerspectiveCamera(65, 1, 0.3, 46000); camF = new T3.PerspectiveCamera(65, 1, 400, 420000);
+    G.camN = camN;
     S.terrain.init(near, far); S.sky.init(near, far); S.fx.init(near); S.terrain.loadFields(); S.input.init(); S.ui.init();
     try { G.opts = JSON.parse(localStorage.getItem('rwfs-opts') || 'null'); } catch (e) {}
     S.ui.menu(); requestAnimationFrame(loop);
@@ -49,7 +50,7 @@
 
   function camera(dt) {
     const h = G.heli, I = S.input, ro = S.terrain.ro, spec = G.spec, inside = G.view === 'cockpit';
-    G.model.cockpit.visible = inside && !G.sight;
+    G.model.cockpit.visible = inside && !G.sight; G.model.hull.visible = !(inside && !G.sight);
     let fov = 66;
     if (inside) {
       eul.set(I.lookPitch, I.lookYaw, 0); tq.setFromEuler(eul);
@@ -57,7 +58,12 @@
         if (!G.sightQ) G.sightQ = h.q.clone().multiply(tq); eul.set(I.lookPitch - (G._lp || 0), I.lookYaw - (G._ly || 0), 0); G._lp = I.lookPitch; G._ly = I.lookYaw;
         const f = tv.set(0, 0, -1).applyQuaternion(G.sightQ), yaw = Math.atan2(-f.x, -f.z) + eul.y, pit = clamp(Math.asin(clamp(f.y, -1, 1)) + eul.x, -1.2, 0.5); eul.set(pit, yaw, 0); G.sightQ.setFromEuler(eul);
         camN.quaternion.copy(G.sightQ); tv.set(0, -0.8, -6.6).applyQuaternion(h.q); camN.position.copy(h.pos).add(tv).sub(ro); fov = G.sightNarrow ? 3.2 : 12;
-      } else { G.sightQ = null; camN.quaternion.copy(h.q).multiply(tq); tv.fromArray(spec.eye).applyQuaternion(h.q); camN.position.copy(h.pos).add(tv).sub(ro); fov = 64 / clamp(I.zoom, 0.7, 3); }
+      } else { G.sightQ = null; const L = G.look; let fovT = 64;
+        if (L && L.tgt) { // facing a panel squarely with its lettering upright; dragging slides the view across the panel
+          const mpp = 2 * L.dist * Math.tan(G.cfov * Math.PI / 360) / window.innerHeight; I.panX = clamp(I.panX, -0.5 / mpp, 0.5 / mpp); I.panY = clamp(I.panY, -0.5 / mpp, 0.5 / mpp);
+          tv.copy(L.tgt).addScaledVector(L.U, -I.panX * mpp).addScaledVector(L.V, I.panY * mpp); m4.lookAt(tv2.fromArray(spec.eye), tv, L.up); tq.setFromRotationMatrix(m4); fovT = L.fov; }
+        G.cq.slerp(tq, Math.min(1, dt * (L && L.tgt ? 7 : 14))); camN.quaternion.copy(h.q).multiply(G.cq); tv.fromArray(spec.eye).applyQuaternion(h.q); camN.position.copy(h.pos).add(tv).sub(ro);
+        G.cfov += (fovT - G.cfov) * Math.min(1, dt * 6); fov = G.cfov / clamp(I.zoom, 0.7, 3); I.lookScale = fov / 64; }
       G.aim.set(0, 0, -1).applyQuaternion(camN.quaternion);
     } else if (G.view === 'flyby') {
       if (!flyby || flyby.distanceTo(h.pos) > 900) { flyby = h.pos.clone().addScaledVector(h.vel, 7).add(tv.set(40, 0, 25)); flyby.y = Math.max(S.terrain.height(flyby.x, flyby.z) + 6, h.pos.y - 15); }
@@ -120,6 +126,19 @@
     S.audio.update && S.audio.update(h, sys, G.view === 'cockpit');
   }
   G.setPanel = on => { G.showPanel = on; G.panelPref[G.view] = on; $('panel').className = on ? '' : 'hide'; $('b-inst').className = on ? 'on' : ''; };
-  G.cycleView = () => { const v = ['chase', 'cockpit', 'flyby']; G.view = v[(v.indexOf(G.view) + 1) % v.length]; G.sight = false; S.input.lookYaw = 0; S.input.lookPitch = G.view === 'cockpit' ? -0.16 : 0; S.input.zoom = 1; flyby = null; G.showPanel = G.panelPref[G.view]; $('panel').className = G.showPanel ? '' : 'hide'; $('b-inst').className = G.showPanel ? 'on' : ''; return G.view; };
+  // Turn the pilot's head to a panel (or back to the front) so its switches fill the screen.
+  G.cfov = 64; G.cq = new T3.Quaternion(); G.lookTo = key => { const cp = G.model && G.model.cp, I = S.input; if (!cp || !cp.views[key]) return; G.look = cp.views[key]; G.lookKey = key; I.dragged = false; I.zoom = 1; I.panX = I.panY = 0; if (key === 'front') { I.lookYaw = 0; I.lookPitch = -0.16; } };
+  G.lookToCtl = id => { const cp = G.model && G.model.cp, v = cp && cp.viewFor && cp.viewFor(id); if (!v) return; G.look = v; G.lookKey = cp.where(id); S.input.dragged = false; S.input.zoom = 1; S.input.panX = S.input.panY = 0; };
+  const ray = new T3.Raycaster(), ndc = new T3.Vector2();
+  G.tap = (x, y) => { // a tap in the 3D cockpit operates whatever control is under the finger
+    if (G.view !== 'cockpit' || G.sight || !G.model || !G.model.cp.hits || G.loading) return;
+    ndc.set(x / window.innerWidth * 2 - 1, -(y / window.innerHeight) * 2 + 1); ray.setFromCamera(ndc, camN); ray.far = 3;
+    // pick the control whose centre is closest to the line of the tap (panels are seen at an angle, so boxes would overlap)
+    let best = null, bs = 1; const cp = G.model.cp, P = new T3.Vector3(), Q = new T3.Vector3();
+    for (const id in cp.ctl) { const c = cp.ctl[id]; P.set(0, 0, 0.012); c.grp.localToWorld(P); if (P.clone().sub(ray.ray.origin).dot(ray.ray.direction) < 0.1) continue; const d = ray.ray.distanceToPoint(P) / c.reach; if (d < bs) { bs = d; best = c; Q.copy(P); } }
+    if (!best) return; ray.ray.closestPointToPoint(Q, P); S.operateControl(best, best.grp.worldToLocal(P).y, G);
+  };
+  G.setView = v => { if (G.view === v) return; G.view = v; G.sight = false; S.input.lookYaw = 0; S.input.lookPitch = v === 'cockpit' ? -0.16 : 0; S.input.zoom = 1; flyby = null; G.cfov = 64; G.look = null; G.lookKey = 'front'; G.showPanel = G.panelPref[v]; $('panel').className = G.showPanel ? '' : 'hide'; $('b-inst').className = G.showPanel ? 'on' : ''; $('b-view').textContent = 'View: ' + v; };
+  G.cycleView = () => { const v = ['chase', 'cockpit', 'flyby']; G.view = v[(v.indexOf(G.view) + 1) % v.length]; G.sight = false; S.input.lookYaw = 0; S.input.lookPitch = G.view === 'cockpit' ? -0.16 : 0; S.input.zoom = 1; flyby = null; G.cfov = 64; G.look = null; G.lookKey = 'front'; G.showPanel = G.panelPref[G.view]; $('panel').className = G.showPanel ? '' : 'hide'; $('b-inst').className = G.showPanel ? 'on' : ''; return G.view; };
   window.addEventListener('load', init);
 })();

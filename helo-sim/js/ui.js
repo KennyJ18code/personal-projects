@@ -68,12 +68,23 @@
     ['SAS 1, SAS 2, TRIM and FPS ON', s => s.fpsOK, 'AFCS', null, ['sas1', 'sas2', 'trim', 'fps']], ['Pitot heat ON', s => s.sw.pitot, 'ELEC', null, ['pitot']],
     ['Position and anti-collision lights ON', s => s.sw.pos && s.sw.acol, 'LIGHTS', null, ['pos', 'acol']], ['Parking brake OFF when ready to lift', s => !s.sw.pbrake, 'MISC', null, ['pbrake']]
   ];
-  let chkNext = -1;
-  function swHtml(id) { const d = S.SWITCHES.find(x => x.id === id), opts = d.kind === 'm' ? ['PRESS'] : d.opts || ['OFF', 'ON']; return `<div class="swc"><span>${d.label}</span><div class="seg">` + opts.map((o, i) => `<button data-sw="${d.id}" data-v="${i}">${o}</button>`).join('') + '</div></div>'; }
-  function rChk() { head('START-UP'); chkNext = -1;
-    $('ovb').innerHTML = STAT + '<ol class="chk">' + CHK.map((c, i) => `<li data-chk="${i}"><i></i><div class="ct"><span>${i + 1}. ${c[0]}</span><small></small></div><div class="cc">${c[4].map(swHtml).join('')}</div></li>`).join('') + '</ol><p class="dim" style="margin-top:8px">Work down the list. Each step has its switches on the same line, and ticks itself when the aircraft is really in that state. The amber line is the next step.</p>'; syncSw(); syncChk(); }
-  function syncChk() { if (U.page !== 'chk') return; const sys = G().sys; let next = -1; $('ovb').querySelectorAll('li[data-chk]').forEach((li, i) => { const ok = !!CHK[i][1](sys); if (!ok && next < 0) next = i; li.className = ok ? 'ok' : next === i ? 'next' : ''; li.querySelector('small').textContent = CHK[i][3] ? CHK[i][3](sys) : ''; });
-    if (next !== chkNext) { chkNext = next; const li = $('ovb').querySelector('li.next'); if (li && li.scrollIntoView) li.scrollIntoView({ block: 'center', behavior: 'smooth' }); } }
+  // The start-up coach: one line at the top of the screen that names the next step and points you at the real switch.
+  let chkNext = -2;
+  U.coach = false; U.follow = false;
+  U.front = 0; // steps already worked through; the coach never jumps back (the parking brake is set first and released last)
+  function nextStep() { const sys = G().sys; while (U.front < CHK.length && CHK[U.front][1](sys)) U.front++; return U.front < CHK.length ? U.front : -1; }
+  function showStep(i) { const g = G(), cp = g.model.cp; if (i < 0 || !cp.ctl) return; const ids = CHK[i][4].filter(id => cp.ctl[id]); S.highlightControls(cp, ids); if (!ids.length) return; if (g.view !== 'cockpit') g.setView('cockpit'); g.lookToCtl(ids[0]); }
+  function syncCoach() {
+    const el = $('coach'), g = G(); if (!U.coach) { el.style.display = 'none'; return; } el.style.display = 'flex';
+    const i = nextStep(), sys = g.sys;
+    if (i !== chkNext) { chkNext = i; if (U.follow) { if (i >= 0) showStep(i); else { S.highlightControls(g.model.cp, null); g.lookTo('front'); } } }
+    const cp = g.model.cp, ids = i >= 0 ? CHK[i][4].filter(id => cp.ctl && cp.ctl[id]) : [], where = ids.length ? cp.views[cp.where(ids[0])].name.toUpperCase() : '';
+    $('coach-t').innerHTML = i < 0 ? '<b>Start-up complete.</b> Raise the collective to lift.' : `<b>${i + 1}/${CHK.length}</b> ${esc(CHK[i][0])}${where ? ' <i>' + where + '</i>' : ''}${CHK[i][3] ? ' <u>' + esc(CHK[i][3](sys)) + '</u>' : ''}`;
+    $('coach-show').className = U.follow ? 'on' : ''; $('coach-show').textContent = U.follow ? 'Guiding' : 'Show me';
+  }
+  function rChk() { head('START-UP CHECKLIST');
+    $('ovb').innerHTML = STAT + '<ol class="chk">' + CHK.map((c, i) => `<li data-chk="${i}"><i></i><div class="ct"><span>${i + 1}. ${c[0]}</span><small></small></div></li>`).join('') + '</ol><p class="dim" style="margin-top:8px">Tap a line and the view turns to that switch in the cockpit and rings it in yellow. Lines tick themselves when the aircraft is really in that state.</p>'; syncChk(); }
+  function syncChk() { if (U.page !== 'chk') return; stat(); const sys = G().sys; let next = -1; $('ovb').querySelectorAll('li[data-chk]').forEach((li, i) => { const ok = !!CHK[i][1](sys); if (!ok && next < 0) next = i; li.className = ok ? 'ok' : next === i ? 'next' : ''; li.querySelector('small').textContent = CHK[i][3] ? CHK[i][3](sys) : ''; }); }
 
   // ---------- map and route ----------
   const tileImg = new Map();
@@ -175,20 +186,25 @@
       <div class="row">${[['cold', 'Cold and dark'], ['ready', 'Running on the pad'], ['air', 'In flight']].map(s => `<button data-st="${s[0]}" class="${o.state === s[0] ? 'on' : ''}">${s[1]}</button>`).join('')}</div>
       <h3>Controls</h3><div class="row">${[['sticks', 'Two touch sticks'], ['tilt', 'Tilt to fly']].map(s => `<button data-md="${s[0]}" class="${o.mode === s[0] ? 'on' : ''}">${s[1]}</button>`).join('')}<button data-cal="1">Re-centre tilt</button>
         <label>Stick sensitivity<input type="range" id="mn-sens" min="0.5" max="1.6" step="0.05" value="${o.sens}"></label><label>Sound<input type="range" id="mn-vol" min="0" max="1" step="0.05" value="${o.vol}"></label></div>
-      <p class="dim">Left pad: slide up and down for collective (it stays where you leave it), left and right for pedals. Right pad: cyclic. Drag anywhere else to look around. TRIM holds the current attitude. A Bluetooth gamepad or a keyboard (arrows, W/S, A/D) also works.</p>
+      <p class="dim">In the cockpit view, tap the real switches, levers and buttons to work them; the buttons on the right turn your head to each panel. Left pad: slide up and down for collective (it stays where you leave it), left and right for pedals. Right pad: cyclic. Drag anywhere else to look around. TRIM holds the current attitude. A Bluetooth gamepad or a keyboard (arrows, W/S, A/D) also works.</p>
       <h3>Graphics</h3><div class="row">${['low', 'med', 'high'].map(q => `<button data-q="${q}" class="${o.quality === q ? 'on' : ''}">${q === 'med' ? 'Medium' : q[0].toUpperCase() + q.slice(1)}</button>`).join('')}</div>
       <div class="row"><button data-img="1" class="${S.terrain.imagery ? 'on' : ''}">Photo terrain: ${S.terrain.imagery ? 'ON' : 'OFF'}</button><span class="dim">Uses more data. Elevation: Mapzen / AWS. Imagery: USGS National Map (US), Sentinel-2 cloudless by EOX (elsewhere).</span></div>
+      <div class="row">${run ? '<button data-go="list">Open the plain switch list</button><span class="dim">Every switch as a simple on-screen list, if you would rather not use the 3D cockpit.</span>' : ''}</div>
       <div class="row" style="margin-top:14px">${run ? '<button data-go="resume" class="on">Resume flight</button>' : ''}<button data-go="fly" class="${run ? '' : 'on'}">${run ? 'Start a new flight' : 'Fly'}</button></div>`;
   };
   function search(q) { q = q.trim().toUpperCase(); if (q.length < 2) return []; const a = [], b = []; for (const f of S.terrain.fields) { if (f.icao.startsWith(q) || f.icao === 'K' + q) a.push(f); else if (f.up.includes(q)) b.push(f); if (a.length > 8) break; } return a.concat(b).slice(0, 8); }
   function applyOpts() { const o = menuSel, I = S.input; I.mode = o.mode; I.sens = +o.sens; S.audio.vol = +o.vol; }
 
   // ---------- wiring ----------
-  U.onStart = () => { close(); $('fire').style.display = $('a-zoom').style.display = G().spec.weapons ? '' : 'none'; };
+  U.setSw = setSw;
+  U.onStart = () => { close(); const g = G(); $('fire').style.display = $('a-zoom').style.display = g.spec.weapons ? '' : 'none'; const cp = g.model.cp; $('looks').innerHTML = cp.order.map(k => `<button data-look="${k}">${cp.views[k].name}</button>`).join('');
+    U.coach = g.opts.state === 'cold'; U.follow = false; chkNext = -2; U.front = g.opts.state === 'cold' ? 0 : CHK.length; $('b-chk').className = U.coach ? 'on' : ''; g.setView(g.opts.state === 'cold' ? 'cockpit' : 'chase'); };
   U.init = () => {
     const B = (id, fn) => $(id).addEventListener('click', fn);
     B('b-view', () => { const v = G().heli && G().cycleView(); $('b-view').textContent = 'View: ' + v; }); B('b-inst', () => { const g = G(); g.setPanel(!g.showPanel); });
-    B('b-sw', () => open('sw', true)); B('b-chk', () => open('chk', true)); B('b-map', () => open('map', true)); B('b-svc', () => open('svc')); B('b-msn', () => open('msn')); B('b-wx', () => open('wx')); B('b-menu', () => { menuSel = null; U.menu(); });
+    B('b-chk', () => { U.coach = !U.coach; if (U.coach) { U.follow = true; chkNext = -2; } else { U.follow = false; S.highlightControls(G().model.cp, null); } $('b-chk').className = U.coach ? 'on' : ''; });
+    B('coach-show', () => { U.follow = !U.follow; if (U.follow) { chkNext = -2; } else S.highlightControls(G().model.cp, null); }); B('coach-list', () => open('chk', true));
+    $('looks').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { G().lookTo(b.dataset.look); if (b.dataset.look === 'front') { U.follow = false; S.highlightControls(G().model.cp, null); } } }); B('b-map', () => open('map', true)); B('b-svc', () => open('svc')); B('b-msn', () => open('msn')); B('b-wx', () => open('wx')); B('b-menu', () => { menuSel = null; U.menu(); });
     B('a-trim', () => { const g = G(); if (!g.heli) return; g.heli.setTrim(); g.sys.say(g.sys.fpsOK ? 'Trim set: holding this attitude' : 'Trim needs FPS'); });
     const hold = (id, key) => { const el = $(id); el.addEventListener('pointerdown', e => { S.input[key] = true; el.classList.add('on'); el.setPointerCapture(e.pointerId); }); const up = () => { S.input[key] = false; el.classList.remove('on'); }; el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); };
     hold('a-brake', 'brakeBtn'); hold('fire', 'fireBtn');
@@ -196,7 +212,7 @@
     B('a-zoom', () => { const g = G(); if (g.view !== 'cockpit') { g.view = 'cockpit'; g.sight = true; g.sightNarrow = false; } else if (!g.sight) { g.sight = true; g.sightNarrow = false; } else if (!g.sightNarrow) g.sightNarrow = true; else g.sight = false; $('a-zoom').textContent = g.sight ? (g.sightNarrow ? 'Sight x20' : 'Sight x5') : 'Sight'; });
     B('b-reset', () => G().reset());
     $('ov').addEventListener('click', e => {
-      const b = e.target.closest('button'), g = G(); if (!b) return; const d = b.dataset, sys = g.sys, h = g.heli;
+      const b = e.target.closest('button'), li = e.target.closest('li[data-chk]'), g = G(); if (li) { close(); U.coach = true; U.follow = false; U.front = Math.min(U.front, +li.dataset.chk); $('b-chk').className = 'on'; return showStep(+li.dataset.chk); } if (!b) return; const d = b.dataset, sys = g.sys, h = g.heli;
       if (d.close) return close(); if (d.tab) { U.swPage = d.tab; return render(); }
       if (d.guard) { guards[d.guard] = performance.now() + 5000; return render(); } if (d.sw) { setSw(d.sw, +d.v); return syncSw(); }
       if (d.hb != null) { h.hdgBug = +d.hb === 0 ? Math.round(h.out.hdg) : S.wrap360(Math.round(h.hdgBug) + +d.hb); return syncSw(); }
@@ -219,7 +235,7 @@
     $('menu').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const d = b.dataset, o = menuSel, g = G();
       if (d.img) S.terrain.imagery = !S.terrain.imagery; if (d.ac) o.ac = d.ac; if (d.st) o.state = d.st; if (d.q) o.quality = d.q; if (d.pick) o.icao = d.pick;
       if (d.md) { o.mode = d.md; if (d.md === 'tilt') S.input.enableTilt().then(ok => { if (!ok) { o.mode = 'sticks'; U.menu(); } }); } if (d.cal) S.input.centerTilt();
-      if (d.go) { o.sens = +$('mn-sens').value; o.vol = +$('mn-vol').value; applyOpts(); S.audio.start(); $('menu').style.display = 'none'; if (d.go === 'resume') { g.paused = false; g.opts = Object.assign(g.opts, { mode: o.mode, sens: o.sens, vol: o.vol }); S.terrain.quality = o.quality; return; } return g.start({ ...o }); }
+      if (d.go) { o.sens = +$('mn-sens').value; o.vol = +$('mn-vol').value; applyOpts(); S.audio.start(); $('menu').style.display = 'none'; if (d.go === 'list') { g.paused = false; return open('sw', true); } if (d.go === 'resume') { g.paused = false; g.opts = Object.assign(g.opts, { mode: o.mode, sens: o.sens, vol: o.vol }); S.terrain.quality = o.quality; return; } return g.start({ ...o }); }
       U.menu(); });
     $('menu').addEventListener('input', e => { if (e.target.id !== 'mn-q') return; $('mn-res').innerHTML = search(e.target.value).map(f => `<button data-pick="${f.icao}">${f.icao} ${esc(f.name.slice(0, 28))}</button>`).join(''); });
   };
@@ -228,11 +244,12 @@
     const g = G(), h = g.heli, sys = g.sys; if (!h) return;
     while (sys.msgs.length) { const d = document.createElement('div'); d.textContent = sys.msgs.shift(); $('msgs').appendChild(d); shown.push({ d, t: performance.now() + 5500 }); if (shown.length > 4) shown.shift().d.remove(); }
     while (shown.length && shown[0].t < performance.now()) shown.shift().d.remove();
-    syncSw(); syncChk(); if (U.page === 'map' && g.frame % 32 === 0) { if (mapS.follow) { mapS.cx = h.pos.x; mapS.cz = h.pos.z; } drawMap(); routeTable(); }
+    syncSw(); syncChk(); syncCoach(); $('looks').style.display = g.view === 'cockpit' && !g.sight ? 'flex' : 'none'; $('looks').querySelectorAll('button').forEach(b => { b.className = b.dataset.look === g.lookKey ? 'on' : ''; });
+    if (U.page === 'map' && g.frame % 32 === 0) { if (mapS.follow) { mapS.cx = h.pos.x; mapS.cz = h.pos.z; } drawMap(); routeTable(); }
     const l = h.load, sp = g.spec; let can = false; if (l && !l.on && sp.hook && sys.sw.hookArm) { const hk = new THREE.Vector3().fromArray(sp.hook).applyQuaternion(h.q).add(h.pos); can = Math.hypot(hk.x - l.pos.x, hk.z - l.pos.z) < 5 && hk.y - l.pos.y < 11 && hk.y > l.pos.y; }
     $('a-hook').style.display = can ? '' : 'none'; $('a-rel').style.display = l && l.on ? '' : 'none';
     const o = h.out, ext = $('ext'); ext.textContent = g.showPanel ? '' : `IAS ${Math.round(o.ias * S.KT)} KT\nALT ${S.fmt(h.pos.y * S.FT)} FT\nAGL ${S.fmt(Math.max(0, o.agl * S.FT))}\nVS  ${Math.round(o.vs * 196.85 / 50) * 50}\nHDG ${String(Math.round(o.hdg)).padStart(3, '0')}\nTQ  ${Math.round(sys.eng[0].tq)}/${Math.round(sys.eng[1].tq)}\nNR  ${Math.round(sys.nr * 100)}%\nFUEL ${lb(sys.fuelTotal())}`;
-    const ret = $('ret'), showRet = sp.weapons && g.view === 'cockpit'; ret.style.display = showRet ? 'block' : 'none'; ret.className = S.wpn.lock ? 'lock' : ''; ret.style.top = g.showPanel ? '36%' : '50%';
+    const ret = $('ret'), showRet = sp.weapons && g.view === 'cockpit' && !(g.look && g.look.tgt); ret.style.display = showRet ? 'block' : 'none'; ret.className = S.wpn.lock ? 'lock' : ''; ret.style.top = g.showPanel ? '36%' : '50%';
     $('b-msn').className = S.mission.cur && !S.mission.cur.complete ? 'amb' : ''; $('b-svc').className = g.svc.fueling ? 'amb' : '';
     $('b-wx').className = Object.values(sys.fail).some(v => v) ? 'warn' : '';
   };

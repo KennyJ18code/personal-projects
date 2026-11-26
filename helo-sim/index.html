@@ -37,9 +37,14 @@ button:disabled{opacity:.4}
 #actsL{position:fixed;left:calc(6px + var(--sl));bottom:calc(var(--ph) + var(--sb) + 6px);display:flex;gap:6px;z-index:5}
 #acts button,#actsL button{min-height:42px;min-width:58px}
 #fire{background:rgba(160,30,20,.85);border-color:var(--red)}
-#msgs{position:fixed;left:50%;transform:translateX(-50%);top:calc(48px + var(--st));z-index:7;display:flex;flex-direction:column;gap:3px;align-items:center;pointer-events:none;max-width:86vw}
+#coach{position:fixed;left:calc(6px + var(--sl));right:calc(6px + var(--sr));top:calc(46px + var(--st));z-index:7;display:none;gap:6px;align-items:center;background:rgba(8,12,14,.9);border:1px solid var(--amb);border-radius:5px;padding:5px 6px 5px 10px}
+#coach span{flex:1;font:600 14px/1.25 system-ui,sans-serif;color:#fff;min-width:0}#coach b{color:var(--amb);font-family:var(--mono)}#coach i{font:700 11px var(--mono);font-style:normal;color:#03140a;background:var(--amb);border-radius:3px;padding:2px 6px;margin-left:4px;white-space:nowrap}#coach u{text-decoration:none;color:var(--cyn);font:700 13px var(--mono);margin-left:6px;white-space:nowrap}
+#coach button{flex:none;min-height:40px}
+#looks{position:fixed;right:calc(6px + var(--sr));top:calc(100px + var(--st));z-index:6;display:none;flex-direction:column;gap:5px}
+#looks button{min-height:42px;min-width:92px;font-size:12px}
+#msgs{position:fixed;left:50%;transform:translateX(-50%);top:calc(100px + var(--st));z-index:7;display:flex;flex-direction:column;gap:3px;align-items:center;pointer-events:none;max-width:86vw}
 #msgs div{background:rgba(5,8,10,.85);border-left:3px solid var(--amb);padding:5px 10px;font:600 12px var(--mono);border-radius:2px}
-#ext{position:fixed;left:calc(8px + var(--sl));top:calc(48px + var(--st));font:600 12px var(--mono);color:var(--grn);text-shadow:0 0 3px #000,0 0 3px #000;z-index:3;pointer-events:none;white-space:pre}
+#ext{position:fixed;left:calc(8px + var(--sl));top:calc(100px + var(--st));font:600 12px var(--mono);color:var(--grn);text-shadow:0 0 3px #000,0 0 3px #000;z-index:3;pointer-events:none;white-space:pre}
 #ret{position:fixed;left:50%;top:42%;width:34px;height:34px;margin:-17px 0 0 -17px;border:1.5px solid var(--grn);border-radius:50%;z-index:3;pointer-events:none;display:none}
 #ret:after{content:"";position:absolute;left:50%;top:50%;width:3px;height:3px;margin:-1.5px;background:var(--grn)}
 #ret.lock{border-color:var(--red);box-shadow:0 0 0 3px rgba(255,74,61,.35)}
@@ -94,9 +99,11 @@ table{border-collapse:collapse;width:100%;font:12px var(--mono)} td,th{padding:5
 <div id="view"></div>
 <div id="ext"></div><div id="ret"></div>
 <div id="top">
-  <button id="b-view">View</button><button id="b-inst" class="on">Gauges</button><button id="b-sw">Cockpit</button><button id="b-chk">Checklist</button>
+  <button id="b-view">View</button><button id="b-inst" class="on">Gauges</button><button id="b-chk">Checklist</button>
   <button id="b-map">Map</button><button id="b-svc">Service</button><button id="b-msn">Mission</button><button id="b-wx">Wx / Fail</button><button id="b-menu">Menu</button>
 </div>
+<div id="coach"><span id="coach-t"></span><button id="coach-show">Show me</button><button id="coach-list">List</button></div>
+<div id="looks"></div>
 <div id="msgs"></div>
 <div id="actsL"><button id="a-brake">Brake</button><button id="a-trim">Trim</button></div>
 <div id="acts"><button id="a-hook" style="display:none">Hook up</button><button id="a-rel" style="display:none" class="amb">Release</button><button id="a-zoom" style="display:none">Sight</button><button id="fire" style="display:none">Fire</button></div>
@@ -108,18 +115,19 @@ table{border-collapse:collapse;width:100%;font:12px var(--mono)} td,th{padding:5
 <div id="crash"><div id="crashmsg"></div><button id="b-reset">Reset on the pad</button></div>
 <div id="menu"><div class="box" id="menubox"></div></div>
 <div id="rot">Rotate your device to landscape to fly.</div>
-<script src="three.min.js?v=4"></script>
-<script src="js/fields.js?v=4"></script>
-<script src="js/core.js?v=4"></script>
-<script src="js/systems.js?v=4"></script>
-<script src="js/physics.js?v=4"></script>
-<script src="js/terrain.js?v=4"></script>
-<script src="js/models.js?v=4"></script>
-<script src="js/world.js?v=4"></script>
-<script src="js/panel.js?v=4"></script>
-<script src="js/input.js?v=4"></script>
-<script src="js/ui.js?v=4"></script>
-<script src="js/main.js?v=4"></script>
+<script src="three.min.js?v=7"></script>
+<script src="js/fields.js?v=7"></script>
+<script src="js/core.js?v=7"></script>
+<script src="js/systems.js?v=7"></script>
+<script src="js/physics.js?v=7"></script>
+<script src="js/terrain.js?v=7"></script>
+<script src="js/models.js?v=7"></script>
+<script src="js/cockpit.js?v=7"></script>
+<script src="js/world.js?v=7"></script>
+<script src="js/panel.js?v=7"></script>
+<script src="js/input.js?v=7"></script>
+<script src="js/ui.js?v=7"></script>
+<script src="js/main.js?v=7"></script>
 <script>if ('serviceWorker' in navigator && location.protocol !== 'file:') addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });</script>
 </body>
 </html>
