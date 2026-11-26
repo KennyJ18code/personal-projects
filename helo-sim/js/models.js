@@ -79,23 +79,23 @@
     S.panelMat = S.panelMat || new T3.MeshBasicMaterial({ map: S.panelTex });
     // shell
     g.add(box(W, 0.04, 2.3, M.inner, 0, ey - 1.24, ez + 0.05), box(W, 0.04, 1.35, M.inner, 0, ey + 0.74, ez + 0.2), box(W, 2.0, 0.05, M.inner, 0, ey - 0.25, ez + 0.82));
-    for (const s of [-1, 1]) { g.add(box(0.04, 0.72, 1.75, M.inner, s * w * 1.06, ey - 0.86, ez - 0.05), box(0.07, 1.22, 0.07, M.inner, s * w * 1.02, ey + 0.16, ez - 0.9, 0.36), box(0.06, 0.06, 1.2, M.inner, s * w * 1.05, ey + 0.72, ez - 0.2), box(0.05, 1.2, 0.07, M.inner, s * w * 1.06, ey + 0.13, ez + 0.4)); }
+    for (const s of [-1, 1]) { g.add(box(0.04, 0.72, 1.75, M.inner, s * w * 1.06, ey - 0.86, ez - 0.05), box(0.055, 1.22, 0.055, M.inner, s * w * 1.02, ey + 0.16, ez - 0.9, 0.36), box(0.06, 0.06, 1.2, M.inner, s * w * 1.05, ey + 0.72, ez - 0.2), box(0.05, 1.2, 0.07, M.inner, s * w * 1.06, ey + 0.13, ez + 0.4)); }
     g.add(box(W, 0.07, 0.07, M.inner, 0, ey + 0.72, ez - 0.68), box(W, 0.55, 0.04, M.inner, 0, ey - 1.0, ez - 1.02));
     // instrument panel, tilted to face the crew
-    const P = new T3.Group(); P.position.set(0, ey - 0.5, ez - 0.74); P.rotation.x = -0.2; g.add(P);
+    const P = new T3.Group(); P.position.set(0, ey - 0.53, ez - 0.72); P.rotation.x = -0.24; g.add(P);
     P.add(box(W * 0.97, 0.5, 0.05, M.panel, 0, 0, -0.03));
     if (tandem) { screen(0.26, 0.25, 0, 0.42, -0.16, 0.02, 0, P); screen(0.2, 0.25, 0.675, 1, 0.14, 0.02, 0, P); }
     else { for (const s of [1, -1]) { screen(0.3, 0.29, 0, 0.42, s * (ex + 0.02), 0.03, 0, P); screen(0.235, 0.29, 0.675, 1, s * (ex - 0.3), 0.03, 0, P); } screen(0.16, 0.26, 0.43, 0.665, 0, 0.03, 0, P); const sb = new T3.Mesh(new T3.PlaneGeometry(0.3, 0.15), M.stby); sb.position.set(0, -0.19, 0.002); P.add(sb); }
     for (let i = 0; i < 6; i++) P.add(cyl(0.012, 0.012, 0.02, M.bezel, (tandem ? -0.3 : -w * 0.9) + i * 0.05, -0.21, 0.01, 'z', 8));
     // glareshield with master warning and caution lamps
-    g.add(box(W, 0.04, 0.46, M.panel, 0, ey - 0.235, ez - 0.86, 0.1), box(W, 0.07, 0.03, M.panel, 0, ey - 0.25, ez - 0.64));
+    g.add(box(W, 0.03, 0.26, M.panel, 0, ey - 0.27, ez - 0.8, 0.08), box(W, 0.05, 0.03, M.panel, 0, ey - 0.285, ez - 0.675));
     o.mw = new T3.Mesh(new T3.BoxGeometry(0.07, 0.035, 0.012), new T3.MeshBasicMaterial({ color: 0x2a1210 })); o.mc = new T3.Mesh(new T3.BoxGeometry(0.07, 0.035, 0.012), new T3.MeshBasicMaterial({ color: 0x2a1210 }));
-    o.mw.position.set(ex - 0.06, ey - 0.25, ez - 0.622); o.mc.position.set(ex + 0.04, ey - 0.25, ez - 0.622); g.add(o.mw, o.mc);
+    o.mw.position.set(ex - 0.06, ey - 0.285, ez - 0.657); o.mc.position.set(ex + 0.04, ey - 0.285, ez - 0.657); g.add(o.mw, o.mc);
     // consoles, seats, flight controls
     if (!tandem) {
       g.add(box(0.4, 0.42, 1.25, M.panel, 0, ey - 1.02, ez - 0.05)); const top = new T3.Mesh(new T3.PlaneGeometry(0.38, 1.2), M.console); top.rotation.x = -Math.PI / 2; top.position.set(0, ey - 0.805, ez - 0.05); g.add(top);
-      g.add(box(0.5, 0.07, 0.95, M.panel, 0, ey + 0.66, ez - 0.2)); const oh = new T3.Mesh(new T3.PlaneGeometry(0.48, 0.92), M.overhead); oh.rotation.x = Math.PI / 2; oh.position.set(0, ey + 0.622, ez - 0.2); g.add(oh);
-      o.pcl = [-1, 1].map(s => { const l = new T3.Group(); l.add(box(0.03, 0.14, 0.03, M.metal, 0, -0.07, 0), box(0.05, 0.04, 0.05, s < 0 ? M.yellow : M.red, 0, -0.15, 0)); l.position.set(s * 0.06, ey + 0.62, ez - 0.52); g.add(l); return l; });
+      g.add(box(0.38, 0.05, 0.7, M.panel, 0, ey + 0.7, ez - 0.05)); const oh = new T3.Mesh(new T3.PlaneGeometry(0.36, 0.68), M.overhead); oh.rotation.x = Math.PI / 2; oh.position.set(0, ey + 0.672, ez - 0.05); g.add(oh);
+      o.pcl = [-1, 1].map(s => { const l = new T3.Group(); l.add(box(0.03, 0.14, 0.03, M.metal, 0, -0.07, 0), box(0.05, 0.04, 0.05, s < 0 ? M.yellow : M.red, 0, -0.15, 0)); l.position.set(s * 0.06, ey + 0.67, ez - 0.3); g.add(l); return l; });
       g.add(box(0.5, 0.78, 0.1, M.seat, -ex, ey - 0.55, ez + 0.3, -0.1), box(0.5, 0.1, 0.5, M.seat, -ex, ey - 0.98, ez + 0.05), box(0.26, 0.2, 0.09, M.seat, -ex, ey - 0.02, ez + 0.36));
     } else { g.add(box(0.22, 0.3, 0.9, M.panel, -w * 0.8, ey - 0.75, ez), box(0.22, 0.3, 0.9, M.panel, w * 0.8, ey - 0.75, ez)); o.pcl = []; }
     o.cyc = new T3.Group(); o.cyc.add(cyl(0.016, 0.016, 0.62, M.dark, 0, 0.31, 0, 'y', 8), box(0.05, 0.13, 0.05, M.dark, 0, 0.66, -0.01, -0.3)); o.cyc.position.set(ex, ey - 1.2, ez - 0.42); g.add(o.cyc);
