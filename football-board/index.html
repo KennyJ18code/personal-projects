@@ -37,6 +37,12 @@ html,body{margin:0;background:var(--color-bg)}
 .fb-rwhen{font-size:var(--cds-font-size-caption);font-weight:600;white-space:pre-wrap}
 .fb-rlinkout{font-size:var(--cds-font-size-caption);color:var(--color-fg)}
 .fx-in{flex:1 1 150px;min-width:0}
+.fx-wide{width:100%;box-sizing:border-box;margin:4px 0 10px}
+.fx-ta{width:100%;box-sizing:border-box;min-height:74px;margin:4px 0 6px;font-size:var(--cds-font-size-caption);resize:vertical}
+#fx-yahoo .fb-lab{display:block;margin-top:10px;color:var(--color-fg);font-weight:600}
+.fx-rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:6px 0 10px}
+.fx-rules label{display:flex;flex-direction:column;gap:3px;font-size:var(--cds-font-size-caption);color:var(--color-fg-muted)}
+.fx-rules input{width:100%;box-sizing:border-box}
 .fx-num{width:84px}
 .fx-go{flex:0 0 auto}
 .fx-opts{margin-top:10px}
@@ -235,8 +241,6 @@ html,body{margin:0;background:var(--color-bg)}
       <div class='fx-roster'></div>
       <div class='fb-controls fx-opts'>
         <label class='fb-lab' for='fx-week'>Week</label><select class='dash-select' id='fx-week'></select>
-        <label class='fb-lab' for='fx-scoring'>Scoring</label>
-        <select class='dash-select' id='fx-scoring'><option value='half'>Half-PPR</option><option value='ppr'>Full PPR</option><option value='std'>Standard</option></select>
         <button class='fb-fbtn fx-go' id='fx-clear' type='button'>Clear team</button>
       </div>
       <details class='fb-notes'><summary>Add a player who is not listed</summary>
@@ -248,6 +252,32 @@ html,body{margin:0;background:var(--color-bg)}
           <button class='fb-fbtn fx-go' id='fx-cbtn' type='button'>Add</button>
         </div>
       </details>
+    </div>
+    <div class='fb-card' id='fx-yahoo'>
+      <h4>Your Yahoo league</h4>
+      <p class='fb-hint'>Yahoo will not share a private league without a sign-in, so fill these boxes from the Yahoo app or site. Everything stays on this device.</p>
+      <label class='fb-lab' for='fx-league'>League link or ID (optional, for your reference)</label>
+      <input class='dash-select fx-wide' id='fx-league' placeholder='football.fantasysports.yahoo.com/f1/123456'>
+      <label class='fb-lab' for='fx-p-mine'>1. My team: copy your roster page (My Team) and paste it here</label>
+      <textarea class='dash-select fx-ta' id='fx-p-mine' placeholder='Paste your roster. Names like Josh Allen or J. Allen and defenses like Pittsburgh DEF are recognized.'></textarea>
+      <button class='fb-fbtn fx-go' id='fx-p-mine-go' type='button'>Read my team</button><p class='fx-pm fb-hint'></p>
+      <label class='fb-lab' for='fx-p-opp'>2. This week's opponent: open Matchup, copy their side and paste it here</label>
+      <textarea class='dash-select fx-ta' id='fx-p-opp' placeholder='Paste your opponent roster'></textarea>
+      <button class='fb-fbtn fx-go' id='fx-p-opp-go' type='button'>Read opponent</button><p class='fx-po fb-hint'></p><p class='fx-oppn fb-hint'></p>
+      <label class='fb-lab' for='fx-p-av'>3. Free agents: open Players, filter to Available, copy the list and paste it here</label>
+      <textarea class='dash-select fx-ta' id='fx-p-av' placeholder='Paste available players'></textarea>
+      <button class='fb-fbtn fx-go' id='fx-p-av-go' type='button'>Read available players</button><p class='fx-pa fb-hint'></p><p class='fx-avn fb-hint'></p>
+      <label class='fb-lab'>4. League rules (League, then Settings, in Yahoo)</label>
+      <div class='fx-rules'>
+        <label>Passing yards per point<input class='dash-select' id='fx-r-py' inputmode='decimal'></label>
+        <label>Points per passing TD<input class='dash-select' id='fx-r-ptd' inputmode='decimal'></label>
+        <label>Points per interception<input class='dash-select' id='fx-r-int' inputmode='decimal'></label>
+        <label>Points per reception<input class='dash-select' id='fx-r-rec' inputmode='decimal'></label>
+        <label>Starting WRs<input class='dash-select' id='fx-r-wr' inputmode='numeric'></label>
+        <label>Starting RBs<input class='dash-select' id='fx-r-rb' inputmode='numeric'></label>
+        <label>Flex spots (W/R/T)<input class='dash-select' id='fx-r-flex' inputmode='numeric'></label>
+      </div>
+      <button class='fb-fbtn fx-go' id='fx-ydef' type='button'>Reset to Yahoo default rules</button>
     </div>
     <div class='fx-out'></div>
     <p class='fb-hint'>Projections are a rule of thumb: season per-game production, scaled up or down by how the opposing defense ranks against the pass or run, home or away, and wet or freezing open-air forecasts. Kickers follow their season points per game, scaled by how many points their team projects to score and the weather. Defenses are projected from sacks and takeaways per game and the points their opponent projects to score (1 per sack, 2 per takeaway, standard points-allowed tiers, plus a small allowance for return scores). The board does not know about injuries beyond the notes shown, and the skill-player list is the season leaders on this board (about 130 players), not every roster.</p>
@@ -1033,20 +1063,21 @@ async function fbRecapsWeek() {
 })();
 </script>
 <script>/* Fantasy mode: enter a roster, get weekly projections, a best lineup and plain advice. Everything is computed in the browser from the board's own snapshot. */
-const FBX = {roster: [], custom: [], scoring: 'half', week: null};
+const FX_YAHOO = {py: 25, ptd: 4, int: -1, rec: 0.5, wr: 3, rb: 2, flex: 1};
+const FBX = {roster: [], custom: [], scoring: 'half', week: null, opp: [], avail: [], rules: Object.assign({}, FX_YAHOO), league: ''};
 const FX_KEY = 'fb-fantasy-v1';
-try { const s = JSON.parse(localStorage.getItem(FX_KEY) || 'null'); if (s) { FBX.roster = s.roster || []; FBX.custom = s.custom || []; FBX.scoring = s.scoring || 'half'; } } catch (e) {}
-const fxSave = () => { try { localStorage.setItem(FX_KEY, JSON.stringify({roster: FBX.roster, custom: FBX.custom, scoring: FBX.scoring})); } catch (e) {} };
+try { const s = JSON.parse(localStorage.getItem(FX_KEY) || 'null'); if (s) { FBX.roster = s.roster || []; FBX.custom = s.custom || []; FBX.scoring = s.scoring || 'half'; FBX.opp = s.opp || []; FBX.avail = s.avail || []; FBX.league = s.league || ''; Object.assign(FBX.rules, s.rules || {}); } } catch (e) {}
+const fxSave = () => { try { localStorage.setItem(FX_KEY, JSON.stringify({roster: FBX.roster, custom: FBX.custom, scoring: FBX.scoring, opp: FBX.opp, avail: FBX.avail, rules: FBX.rules, league: FBX.league})); } catch (e) {} };
 const fxId = (p) => p.name + '|' + p.team;
 const fxPool = () => DATA.fantasy_pool.concat(FBX.custom);
-const fxPPR = () => ({std: 0, half: 0.5, ppr: 1}[FBX.scoring]);
+const fxPPR = () => +FBX.rules.rec || 0;
 
 /* season per-game fantasy points split into passing, rushing and receiving parts */
 function fxBase(p) {
   if (p.custom) return {pass: 0, rush: 0, rec: +p.avg || 0, flat: true};
   if (p.pos === 'K') return {pass: 0, rush: 0, rec: +p.k_avg || 0, flat: true};
   if (p.pos === 'DST') { const t = nflTeam(p.team); return {pass: 0, rush: 0, rec: +p.sacks + 2 * +p.takeaways + fxPA(t ? +t.def_ppg : 22) + 0.5, flat: true}; }
-  return {pass: p.pg ? (p.pass_yds * 0.04 + p.pass_td * 4 - p.ints * 2) / p.pg : 0, rush: p.rg ? (p.rush_yds * 0.1 + p.rush_td * 6) / p.rg : 0, rec: p.cg ? (p.rec_yds * 0.1 + p.rec_td * 6 + p.rec * fxPPR()) / p.cg : 0, flat: false};
+  return {pass: p.pg ? (p.pass_yds / (+FBX.rules.py || 25) + p.pass_td * (+FBX.rules.ptd || 0) + p.ints * (+FBX.rules.int || 0)) / p.pg : 0, rush: p.rg ? (p.rush_yds * 0.1 + p.rush_td * 6) / p.rg : 0, rec: p.cg ? (p.rec_yds * 0.1 + p.rec_td * 6 + p.rec * fxPPR()) / p.cg : 0, flat: false};
 }
 /* fantasy points for points allowed, smoothed between the standard tiers */
 function fxPA(x) { const pts = [[0, 10], [3.5, 7], [10, 4], [17, 1], [24, 0], [31, -1], [38, -4]]; if (x <= 0) return 10; for (let i = 1; i < pts.length; i++) if (x <= pts[i][0]) { const a = pts[i - 1], b = pts[i]; return a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]); } return -4; }
@@ -1081,7 +1112,8 @@ function fxProject(p, week) {
 function fxLineup(players, week) {
   const rows = players.map((p) => Object.assign({p: p}, fxProject(p, week))).sort((a, b) => b.pts - a.pts), used = new Set(), start = [];
   const take = (slot, ok) => { const r = rows.find((x) => !used.has(x) && ok(x.p.pos) && x.pts > 0); if (r) { used.add(r); start.push(Object.assign({slot: slot}, r)); } else start.push({slot: slot, empty: true}); };
-  take('QB', (x) => x === 'QB'); take('RB', (x) => x === 'RB'); take('RB', (x) => x === 'RB'); take('WR', (x) => x === 'WR'); take('WR', (x) => x === 'WR'); take('TE', (x) => x === 'TE'); take('FLEX', (x) => x === 'RB' || x === 'WR' || x === 'TE'); take('K', (x) => x === 'K'); take('DST', (x) => x === 'DST');
+  const times = (n, fn) => { for (let i = 0; i < Math.max(0, Math.min(4, Math.round(+n || 0))); i++) fn(); };
+  take('QB', (x) => x === 'QB'); times(FBX.rules.rb, () => take('RB', (x) => x === 'RB')); times(FBX.rules.wr, () => take('WR', (x) => x === 'WR')); take('TE', (x) => x === 'TE'); times(FBX.rules.flex, () => take('FLEX', (x) => x === 'RB' || x === 'WR' || x === 'TE')); take('K', (x) => x === 'K'); take('DST', (x) => x === 'DST');
   return {start: start, bench: rows.filter((r) => !used.has(r)), total: start.reduce((s, r) => s + (r.pts || 0), 0)};
 }
 function fxAdvice(players, week) {
@@ -1089,7 +1121,8 @@ function fxAdvice(players, week) {
   const all = pool.map((p) => ({p: p, avg: (() => { const x = fxBase(p); return x.pass + x.rush + x.rec; })()}));
   const depth = {QB: 10, RB: 20, WR: 20, TE: 8, K: 8, DST: 8}, deep = new Set();
   Object.keys(depth).forEach((pos) => all.filter((x) => x.p.pos === pos).sort((x, y) => y.avg - x.avg).slice(depth[pos]).forEach((x) => deep.add(fxId(x.p))));
-  const free = pool.filter((p) => !mine.has(fxId(p)) && deep.has(fxId(p)) && !p.note).map((p) => Object.assign({p: p}, fxProject(p, week))).filter((r) => r.pts > 0);
+  const availSet = new Set(FBX.avail), theirs = new Set(FBX.opp);
+  const free = pool.filter((p) => !mine.has(fxId(p)) && !theirs.has(fxId(p)) && (availSet.size ? availSet.has(fxId(p)) : deep.has(fxId(p))) && !p.note).map((p) => Object.assign({p: p}, fxProject(p, week))).filter((r) => r.pts > 0);
   const bestFree = (pos) => free.filter((r) => (pos === 'FLEX' ? ['RB', 'WR', 'TE'].includes(r.p.pos) : r.p.pos === pos)).sort((a, b) => b.pts - a.pts);
   const named = new Set();
   L.start.forEach((s) => {
@@ -1103,27 +1136,49 @@ function fxAdvice(players, week) {
   const idle = L.start.concat(L.bench).filter((r) => !r.empty && !r.game); if (idle.length) out.push({level: 'info', text: 'Not counted this week (already played, or no game left on the board): ' + idle.map((r) => r.p.name).join(', ') + '.'});
   const weeks = [...new Set(DATA.nfl_games.map((g) => +g.week))].sort((a, b) => a - b), totals = weeks.map((w) => ({week: w, total: fxLineup(players, w).total}));
   const rest = totals.filter((t) => t.week >= week); if (rest.length > 1) { const lo = rest.slice().sort((a, b) => a.total - b.total)[0], hi = rest.slice().sort((a, b) => b.total - a.total)[0]; if (hi.total - lo.total >= 6) out.push({level: 'info', text: 'Looking ahead: your best week is Week ' + hi.week + ' (' + hi.total.toFixed(0) + ') and your thinnest is Week ' + lo.week + ' (' + lo.total.toFixed(0) + '). Plan pickups for Week ' + lo.week + ' now.'}); }
+  const oppPlayers = FBX.opp.map((id) => pool.find((p) => fxId(p) === id)).filter(Boolean);
+  let versus = null;
+  if (oppPlayers.length) { const O = fxLineup(oppPlayers, week), diff = L.total - O.total; versus = {mine: L.total, theirs: O.total, lineup: O};
+    out.unshift({level: diff >= 5 ? 'good' : diff <= -5 ? 'bad' : 'info', text: diff >= 5 ? 'You are projected to win this matchup by about ' + diff.toFixed(0) + '. Play your safest lineup and avoid boom-or-bust swaps.' : diff <= -5 ? 'You are projected to trail by about ' + (-diff).toFixed(0) + '. You need upside: favor players in good matchups and indoor games over safe, low-ceiling starters.' : 'This matchup projects as a toss-up (' + L.total.toFixed(0) + ' to ' + O.total.toFixed(0) + '). Every start/sit call below matters.'}); }
   if (!out.length) out.push({level: 'good', text: 'Nothing to fix this week. Your best lineup is set and no one on this board clearly beats your starters.'});
-  return {lineup: L, advice: out, totals: totals, free: free};
+  return {lineup: L, advice: out, totals: totals, free: free, versus: versus};
 }
 
+/* find board players named in pasted Yahoo text: full names, short names like J. Allen, and team defenses */
+function fxParse(text) {
+  const t = ' ' + String(text).toLowerCase().replace(/[\u2019`]/g, "'").replace(/\s+/g, ' ') + ' ', pool = fxPool(), out = [];
+  const shortOf = (p) => { const parts = p.name.replace(/ (Jr\.|Sr\.|II|III|IV)$/, '').split(' '); return (parts[0][0] + '. ' + parts.slice(1).join(' ')).toLowerCase(); };
+  const counts = {}; pool.forEach((p) => { if (p.pos !== 'DST') { const k = shortOf(p); counts[k] = (counts[k] || 0) + 1; } });
+  pool.forEach((p) => {
+    if (p.pos === 'DST') { const tm = nflTeam(p.team), nick = p.name.replace(' D/ST', '').toLowerCase(), city = tm ? tm.team.toLowerCase().replace(' ' + nick, '') : nick;
+      if (new RegExp('(' + nick + '|' + city + ')[^a-z]{1,4}([a-z]{2,3}[^a-z]{1,4})?(def|dst|d/st|defense)\\b').test(t) || new RegExp('\\b(def|dst)[^a-z]{1,4}(' + nick + '|' + city + ')\\b').test(t)) out.push(p); return; }
+    const full = p.name.toLowerCase(), sh = shortOf(p);
+    if (t.includes(full) || t.includes(full.replace(/\./g, '')) || (counts[sh] === 1 && t.includes(sh))) out.push(p);
+  });
+  return out;
+}
 function fxRender() {
   const sec = document.getElementById('fantasy'); if (!sec) return;
   const weeks = [...new Set(DATA.nfl_games.map((g) => +g.week))].sort((a, b) => a - b); if (FBX.week === null) FBX.week = weeks[0];
   const wk = sec.querySelector('#fx-week'); if (!wk.options.length) wk.replaceChildren(...weeks.map((w) => new Option('Week ' + w, String(w)))); wk.value = String(FBX.week);
-  sec.querySelector('#fx-scoring').value = FBX.scoring;
+  ['py', 'ptd', 'int', 'rec', 'wr', 'rb', 'flex'].forEach((k) => { const i = sec.querySelector('#fx-r-' + k); if (i && document.activeElement !== i) i.value = String(FBX.rules[k]); });
+  const lg = sec.querySelector('#fx-league'); if (lg && document.activeElement !== lg) lg.value = FBX.league;
+  sec.querySelector('.fx-oppn').textContent = FBX.opp.length ? 'Opponent: ' + FBX.opp.length + ' players read.' : ''; sec.querySelector('.fx-avn').textContent = FBX.avail.length ? 'Available list: ' + FBX.avail.length + ' players read. Pickup advice is limited to them.' : '';
   const pool = fxPool(), dl = sec.querySelector('#fx-list'); dl.replaceChildren(...pool.map((p) => new Option(p.name + ' · ' + p.pos + ' · ' + p.team)));
   const players = FBX.roster.map((id) => pool.find((p) => fxId(p) === id)).filter(Boolean);
   const chips = sec.querySelector('.fx-roster'); chips.replaceChildren(...players.map((p) => { const c = fbEl('button', 'fx-chip'); c.type = 'button'; const t = nflTeam(p.team); c.style.borderColor = t ? t.color : 'var(--color-border-line)'; c.append(fbEl('b', '', p.name), fbEl('span', 'fb-sub', ' ' + p.pos + ' · ' + p.team + '  ✕')); c.setAttribute('aria-label', 'Remove ' + p.name); c.onclick = () => { FBX.roster = FBX.roster.filter((x) => x !== fxId(p)); fxSave(); fxRender(); }; return c; }));
   const out = sec.querySelector('.fx-out');
   if (!players.length) { out.replaceChildren(fbEl('p', 'fb-hint', 'Add your players above to see projections, your best lineup and advice for the week. Your team is saved on this device only.')); return; }
   const A = fxAdvice(players, FBX.week), L = A.lineup, kids = [];
-  const sum = fbEl('div', 'fb-card'); sum.append(fbEl('h4', '', 'Week ' + FBX.week + ' projection'), fbEl('div', 'fb-temp', L.total.toFixed(1)), fbEl('div', 'fb-sub', 'Projected points from your best lineup (' + {std: 'standard', half: 'half-PPR', ppr: 'full PPR'}[FBX.scoring] + ' scoring)'));
+  const sum = fbEl('div', 'fb-card'); sum.append(fbEl('h4', '', 'Week ' + FBX.week + ' projection'), fbEl('div', 'fb-temp', L.total.toFixed(1)), fbEl('div', 'fb-sub', 'Projected points from your best lineup (' + 'your league rules)'));
   const maxT = Math.max(...A.totals.map((t) => t.total), 1), W = 320, H = 110, bw = W / A.totals.length;
   const svg = d3.create('svg').attr('viewBox', '0 0 ' + W + ' ' + (H + 34)).attr('width', '100%').attr('role', 'img').attr('aria-label', 'Projected lineup points for each remaining week');
   A.totals.forEach((t, i) => { const h = H * t.total / maxT, on = t.week === FBX.week; svg.append('rect').attr('x', i * bw + 5).attr('y', H - h + 14).attr('width', bw - 10).attr('height', Math.max(1, h)).attr('rx', 4).style('fill', on ? '#ffb800' : dash.colors[0]).style('opacity', on ? 1 : 0.55);
     svg.append('text').attr('class', 'fb-svgtext').attr('x', i * bw + bw / 2).attr('y', H - h + 10).attr('text-anchor', 'middle').text(t.total.toFixed(0)); svg.append('text').attr('class', 'fb-svgmuted').attr('x', i * bw + bw / 2).attr('y', H + 29).attr('text-anchor', 'middle').text('Wk ' + t.week); });
   sum.appendChild(svg.node()); kids.push(sum);
+  if (A.versus) { const v = A.versus, mc = fbEl('div', 'fb-card'); mc.appendChild(fbEl('h4', '', 'Your matchup, Week ' + FBX.week)); const row = fbEl('div', 'fb-leanrow'); row.append(fbEl('span', '', 'You ' + v.mine.toFixed(1)), fbEl('span', '', v.theirs.toFixed(1) + ' Opponent'));
+    const bar = fbEl('div', 'fb-leanbar'), a = fbEl('span'), h = fbEl('span'), tot = v.mine + v.theirs || 1; a.style.cssText = 'width:' + (100 * v.mine / tot) + '%;background:#ffb800'; h.style.cssText = 'width:' + (100 * v.theirs / tot) + '%;background:' + dash.colors[0]; bar.append(a, h); mc.append(row, bar);
+    mc.appendChild(fbEl('div', 'fb-sub', 'Opponent best lineup: ' + v.lineup.start.filter((r) => !r.empty).map((r) => r.p.name + ' ' + r.pts.toFixed(1)).join(' · '))); kids.push(mc); }
   const adv = fbEl('div', 'fb-card'); adv.appendChild(fbEl('h4', '', 'What to do this week')); A.advice.forEach((a) => { const r = fbEl('div', 'fx-adv fx-' + a.level, a.text); adv.appendChild(r); }); kids.push(adv);
   const maxP = Math.max(...L.start.concat(L.bench).map((r) => r.pts || 0), 1);
   const rowOf = (r, slot) => { const row = fbEl('div', 'fx-row'); if (r.empty) { row.append(fbEl('span', 'fb-badge', slot), fbEl('span', 'fb-sub', 'Empty')); return row; }
@@ -1146,12 +1201,19 @@ function fxRender() {
   sec.querySelector('#fx-addbtn').addEventListener('click', add);
   sec.querySelector('#fx-add').addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
   sec.querySelector('#fx-week').addEventListener('change', (e) => { FBX.week = +e.target.value; fxRender(); });
-  sec.querySelector('#fx-scoring').addEventListener('change', (e) => { FBX.scoring = e.target.value; fxSave(); fxRender(); });
+  ['py', 'ptd', 'int', 'rec', 'wr', 'rb', 'flex'].forEach((k) => sec.querySelector('#fx-r-' + k).addEventListener('change', (e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) { FBX.rules[k] = v; fxSave(); fxRender(); } }));
+  sec.querySelector('#fx-ydef').addEventListener('click', () => { FBX.rules = Object.assign({}, FX_YAHOO); fxSave(); fxRender(); });
+  sec.querySelector('#fx-league').addEventListener('change', (e) => { FBX.league = e.target.value.trim(); fxSave(); });
+  const read = (boxId, msgSel, apply) => sec.querySelector(boxId + '-go').addEventListener('click', () => { const found = fxParse(sec.querySelector(boxId).value); apply(found.map(fxId)); sec.querySelector(msgSel).textContent = found.length ? 'Read ' + found.length + ': ' + found.map((p) => p.name).join(', ') + '.' : 'No players on this board were recognized in that text.'; fxSave(); fxRender(); });
+  read('#fx-p-mine', '.fx-pm', (ids) => { FBX.roster = [...new Set(FBX.roster.concat(ids))]; });
+  read('#fx-p-opp', '.fx-po', (ids) => { FBX.opp = ids; });
+  read('#fx-p-av', '.fx-pa', (ids) => { FBX.avail = ids; });
   sec.querySelector('#fx-cbtn').addEventListener('click', () => { const n = sec.querySelector('#fx-cname').value.trim(), team = sec.querySelector('#fx-cteam').value, pos = sec.querySelector('#fx-cpos').value, avg = parseFloat(sec.querySelector('#fx-cavg').value);
     const msg = sec.querySelector('.fx-msg'); if (!n || !team || isNaN(avg)) { msg.textContent = 'Give a name, team and average points per game.'; return; }
     const p = {name: n, team: team, pos: pos, avg: avg, custom: true, note: ''}; FBX.custom = FBX.custom.filter((x) => fxId(x) !== fxId(p)).concat([p]); if (!FBX.roster.includes(fxId(p))) FBX.roster.push(fxId(p)); msg.textContent = ''; sec.querySelector('#fx-cname').value = ''; sec.querySelector('#fx-cavg').value = ''; fxSave(); fxRender(); });
-  sec.querySelector('#fx-clear').addEventListener('click', () => { FBX.roster = []; fxSave(); fxRender(); });
+  sec.querySelector('#fx-clear').addEventListener('click', () => { FBX.roster = []; FBX.opp = []; FBX.avail = []; fxSave(); fxRender(); });
   sec.querySelector('#fx-cteam').replaceChildren(...DATA.nfl_teams.map((t) => new Option(t.abbr, t.abbr)));
+  if (/[?&]fxdemo\b/.test(location.search)) FBX.opp = fxParse('P. Mahomes KC QB, Bijan Robinson, D. Henry, J. Chase, Garrett Wilson, Nico Collins, T. McBride, Kyren Williams, Tyler Bass, Minnesota DEF').map(fxId);
   if (/[?&]fxdemo\b/.test(location.search)) FBX.roster = ['Josh Allen|BUF', 'Jahmyr Gibbs|DET', 'Chase Brown|CIN', 'CeeDee Lamb|DAL', 'Tee Higgins|CIN', 'George Kittle|SF', 'Bucky Irving|TB', 'Drake London|ATL', 'Aaron Rodgers|PIT', 'Evan McPherson|CIN', 'Steelers D/ST|PIT'];
   fxRender();
   if (location.hash === '#fantasy' || location.hash === '#recaps') document.querySelectorAll('.fb-tab[data-tab=' + location.hash.slice(1) + ']').forEach((b) => b.click());
