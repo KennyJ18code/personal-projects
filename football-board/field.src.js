@@ -1,4 +1,4 @@
-/* 3D last-play field. Reconstructs the most recent play from ESPN play-by-play text and yard lines. */
+/* Last-play field. Reconstructs the most recent play from ESPN play-by-play text and yard lines. */
 const FBF = {scene: null, key: '', timer: 0, raf: 0, model: null, t0: 0, sample: false};
 const F_LEN = 100, F_W = 53.3, EZ = 10;
 
@@ -40,7 +40,7 @@ function fbParsePlay(play, ctx) {
     complete: kind === 'pass' && !incomplete && !intercepted, incomplete: incomplete, turnover: intercepted || fumbleLost, score: score, approx: approx,
     firstX: dist !== null && down ? xOf(clamp(toGoStart - dist, 0, 100)) : null,
     downText: down && dist !== null && ord[down] ? ord[down] + ' & ' + (toGoStart <= dist ? 'goal' : dist) : '',
-    off: homeOff ? ctx.home : ctx.away, def: homeOff ? ctx.away : ctx.home, home: ctx.home, away: ctx.away, text: text,
+    off: homeOff ? ctx.home : ctx.away, def: homeOff ? ctx.away : ctx.home, home: ctx.home, away: ctx.away, text: text, college: !!ctx.college,
     clock: [(play.period && play.period.number) ? 'Q' + play.period.number : '', (play.clock && play.clock.displayValue) || ''].filter(Boolean).join(' · ')};
 }
 
@@ -58,113 +58,171 @@ function fbPickPlay(summary, situation) {
   return null;
 }
 
-function fbFieldTexture(m) {
-  const c = document.createElement('canvas'); c.width = 1200; c.height = 533; const g = c.getContext('2d'), px = 10;
-  for (let i = 0; i < 12; i++) { g.fillStyle = i === 0 ? m.away.color : i === 11 ? m.home.color : i % 2 ? '#2f7d3b' : '#2a7135'; g.fillRect(i * 100, 0, 100, 533); }
-  g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 3; g.strokeRect(2, 2, 1196, 529);
-  for (let y = 0; y <= 100; y += 5) { g.lineWidth = y % 10 ? 1.5 : 3; g.beginPath(); g.moveTo(100 + y * px, 0); g.lineTo(100 + y * px, 533); g.stroke(); }
-  g.fillStyle = 'rgba(255,255,255,.9)'; g.font = 'bold 44px system-ui,sans-serif'; g.textAlign = 'center';
-  for (let y = 10; y <= 90; y += 10) { const n = String(y <= 50 ? y : 100 - y); g.fillText(n, 100 + y * px, 468); g.save(); g.translate(100 + y * px, 65); g.rotate(Math.PI); g.fillText(n, 0, 0); g.restore(); }
-  g.font = 'bold 54px system-ui,sans-serif';
-  [[m.away.short, 50, -1], [m.home.short, 1150, 1]].forEach(([name, x, s]) => { g.save(); g.translate(x, 266); g.rotate(s * Math.PI / 2); g.fillStyle = '#fff'; g.fillText(String(name).slice(0, 14).toUpperCase(), 0, 18); g.restore(); });
-  return new THREE.CanvasTexture(c);
+const fbEase = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+function fbNames(text) {
+  const N = "([A-Z][A-Za-z'\\-]*\\.? ?[A-Z][A-Za-z'\\-]+(?: (?:Jr|Sr|II|III|IV)\\.?)?)";
+  const clean = String(text).replace(/^\s*\([^)]*\)\s*/, '');
+  const first = (clean.match(new RegExp('^' + N)) || [])[1] || '';
+  const to = (clean.match(new RegExp('(?: to | intended for )' + N)) || [])[1] || '';
+  return {first: first, to: to};
 }
-
 function fbBuild(el, m) {
   if (FBF.raf) cancelAnimationFrame(FBF.raf);
-  if (FBF.renderer) { FBF.renderer.dispose(); }
   el.replaceChildren();
-  let renderer;
-  try { renderer = new THREE.WebGLRenderer({antialias: true, alpha: true}); } catch (e) { el.textContent = 'This device could not start the 3D view.'; return; }
-  const W = Math.max(280, el.clientWidth || 360), H = Math.round(Math.min(420, W * 0.62));
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.setSize(W, H); el.appendChild(renderer.domElement);
-  renderer.domElement.setAttribute('role', 'img'); renderer.domElement.setAttribute('aria-label', '3D replay of the last play: ' + m.text);
-  const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(42, W / H, 1, 600);
-  scene.add(new THREE.AmbientLight(0xffffff, 0.75)); const sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(-30, 80, 40); scene.add(sun);
-  const apron = new THREE.Mesh(new THREE.PlaneGeometry(160, 90), new THREE.MeshLambertMaterial({color: 0x1d4d27})); apron.rotation.x = -Math.PI / 2; apron.position.y = -0.05; scene.add(apron);
-  const field = new THREE.Mesh(new THREE.PlaneGeometry(F_LEN + 2 * EZ, F_W), new THREE.MeshLambertMaterial({map: fbFieldTexture(m)})); field.rotation.x = -Math.PI / 2; scene.add(field);
-  const yellow = new THREE.MeshLambertMaterial({color: 0xf2c200});
-  [-1, 1].forEach((s) => { const post = new THREE.Group(); const cyl = (r, h) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 8), yellow);
-    const base = cyl(0.35, 10); base.position.y = 5; const bar = cyl(0.3, 18.5); bar.rotation.x = Math.PI / 2; bar.position.y = 10;
-    const u1 = cyl(0.25, 20); u1.position.set(0, 20, -9.25); const u2 = cyl(0.25, 20); u2.position.set(0, 20, 9.25); post.add(base, bar, u1, u2); post.position.x = s * (50 + EZ); scene.add(post); });
-  const stripe = (x, color, op) => { const s = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, F_W), new THREE.MeshBasicMaterial({color: color, transparent: true, opacity: op})); s.position.set(x, 0.08, 0); scene.add(s); };
-  stripe(m.xs, 0x3aa0ff, 0.95); if (m.firstX !== null) stripe(m.firstX, 0xffd400, 0.95);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.9, 24), new THREE.MeshBasicMaterial({color: 0xffffff, side: THREE.DoubleSide})); ring.rotation.x = -Math.PI / 2; scene.add(ring);
-  const man = (color, big) => { const g = new THREE.Group(); const mat = new THREE.MeshLambertMaterial({color: color});
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.6, 2.6, 10), mat); body.position.y = 1.3; const head = new THREE.Mesh(new THREE.SphereGeometry(0.62, 10, 8), new THREE.MeshLambertMaterial({color: 0xf2f2f2})); head.position.y = 3.1;
-    g.add(body, head); if (big) g.scale.set(1.25, 1.25, 1.25); scene.add(g); return g; };
-  const f = m.dir, offC = new THREE.Color(m.off.color), defC = new THREE.Color(m.def.color);
-  const scrimmage = m.kind === 'pass' || m.kind === 'run' || m.kind === 'sack' || m.kind === 'other';
-  if (scrimmage) {
-    [-6, -3, 0, 3, 6].forEach((z) => man(offC).position.set(m.xs - f * 0.8, 0, z));
-    [-5, -1.7, 1.7, 5].forEach((z) => man(defC).position.set(m.xs + f * 1.2, 0, z));
-    [[-8, 5], [0, 5.5], [8, 5], [-20, 7], [20, 7], [-7, 14], [7, 14]].forEach(([z, d]) => man(defC).position.set(m.xs + f * d, 0, z));
-    [[-20, 0.6], [20, 0.6], [11, 1.4]].forEach(([z, d]) => { if (!(m.kind === 'pass' && Math.sign(z) === (m.lateral || 1) && Math.abs(z) === 20)) man(offC).position.set(m.xs - f * d, 0, z); });
-  }
-  const qb = man(offC, true), mover = man(offC, true);
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 10), new THREE.MeshLambertMaterial({color: 0x8a4b22})); ball.scale.set(1.6, 1, 1); scene.add(ball);
-  /* key frames */
-  const V = (x, z, y) => new THREE.Vector3(x, y || 0, z);
-  const lat = m.lateral, P = {};
-  P.qb0 = V(m.xs - f * 1.6, 0); P.qb1 = V(m.xs - f * 7, lat * 1.5);
-  let carrier = [], flight = null, kickH = 0;
+  const U = 10, HALF = F_W / 2, PAD = 34, f = m.dir, lat = m.lateral, college = !!m.college;
+  const X = (x) => (x + 60) * U, Z = (z) => (z + HALF) * U + PAD;
+  const names = fbNames(m.text), shotgun = /shotgun/i.test(m.text) || m.kind === 'pass';
+  /* ---- key frames (yards) ---- */
+  const P = (x, z) => ({x: x, z: z}), lerp = (a, b, u) => P(a.x + (b.x - a.x) * u, a.z + (b.z - a.z) * u);
+  const qb0 = P(m.xs - f * (shotgun ? 5 : 1.4), 0), qb1 = P(m.xs - f * 8, lat * 1.5);
+  let carrier = [], flight = null, kick = false, endPt;
+  const side = lat || 1;
   if (m.kind === 'pass') {
     const g0 = m.gain === null ? 6 : m.gain;
     let air = m.complete ? (m.deep ? Math.max(15, g0 * 0.75) : Math.min(Math.max(g0 * 0.6, -2), 9)) : (m.deep ? 24 : 8);
     if (m.complete) air = Math.min(air, Math.max(g0, -3));
-    const zc = (lat || 0.35) * (m.deep ? 17 : 12);
-    const catchPt = V(m.xs + f * air, zc), endPt = V(m.xe, zc * 0.8);
-    const wr0 = V(m.xs - f * 0.6, (lat || 1) * 20);
-    carrier = [wr0, V(m.xs + f * air * 0.65, (lat || 1) * 20), catchPt].concat(m.complete ? [endPt] : []);
-    flight = [V(P.qb1.x, P.qb1.z, 2.4), V(catchPt.x, catchPt.z, 2.2)]; P.end = m.complete ? endPt : catchPt;
+    const zc = (lat || 0.35) * (m.deep ? 17 : 11), catchPt = P(m.xs + f * air, zc);
+    endPt = m.complete ? P(m.xe, zc * 0.78) : catchPt;
+    carrier = [P(m.xs - f * 0.4, side * 20), P(m.xs + f * Math.max(air * 0.7, 1), side * 20), catchPt].concat(m.complete ? [endPt] : []);
+    flight = [qb1, catchPt];
   } else if (m.kind === 'run') {
-    const rb0 = V(m.xs - f * 6.5, 1.5);
-    carrier = [rb0, V(m.xs - f * 3, m.gapZ * 0.5), V(m.xs + f * 0.5, m.gapZ), V(m.xe, m.gapZ * 1.25)]; P.end = carrier[3];
-  } else if (m.kind === 'sack') { carrier = [P.qb0, P.qb1, V(m.xe, lat * 3)]; P.end = carrier[2]; }
+    endPt = P(m.xe, Math.max(-22, Math.min(22, m.gapZ * 1.3)));
+    carrier = [P(m.xs - f * 7, 1.2), P(m.xs - f * 3.5, m.gapZ * 0.45), P(m.xs + f * 0.6, m.gapZ), endPt];
+  } else if (m.kind === 'sack') { endPt = P(m.xe, lat * 3); carrier = [qb0, qb1, endPt]; }
   else if (m.kind === 'punt' || m.kind === 'kickoff' || m.kind === 'fg') {
-    const from = V(m.xs - f * (m.kind === 'punt' ? 13 : m.kind === 'fg' ? 7 : 0), 0, 0.5), to = m.kind === 'fg' ? V(f * (50 + EZ), 0, m.score ? 12 : 4) : V(m.xe, lat * 8, 0.5);
-    flight = [from, to]; kickH = m.kind === 'fg' ? 9 : 22; P.end = V(to.x, to.z); carrier = [V(from.x, from.z), V(from.x, from.z)];
-  } else { carrier = [P.qb0, P.qb0]; P.end = V(m.xe, 0); }
-  ring.position.set(P.end.x, 0.1, P.end.z);
-  const pathPts = (pts) => { const out = []; for (let i = 0; i < pts.length - 1; i++) for (let k = 0; k < 16; k++) out.push(pts[i].clone().lerp(pts[i + 1], k / 16)); out.push(pts[pts.length - 1].clone()); return out; };
-  const route = pathPts(carrier).map((p) => V(p.x, p.z, 0.25));
-  const arcAt = (u) => { const p = flight[0].clone().lerp(flight[1], u); const dist = flight[0].distanceTo(flight[1]); p.y += Math.sin(Math.PI * u) * (kickH || (1.5 + dist * 0.17)); return p; };
-  const arc = flight ? d3.range(41).map((i) => arcAt(i / 40)) : [];
-  const SEGS = 64;
-  const tube = (pts, color, r) => { const ok = pts.length > 1 && pts[0].distanceTo(pts[pts.length - 1]) > 0.5; const geo = ok ? new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.1), SEGS, r, 6, false) : new THREE.BufferGeometry(); const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: color})); mesh.visible = ok; scene.add(mesh); return {geometry: {setDrawRange: (a, n, total) => { if (ok) geo.setDrawRange(0, Math.round(SEGS * (total ? n / total : 0)) * 36); }}}; };
-  const routeT = tube(route, 0xffffff, 0.32), arcT = tube(arc, 0xffd24a, 0.26);
-  const routeLine = {geometry: {setDrawRange: (a, n) => routeT.geometry.setDrawRange(a, n, route.length)}}, arcLine = {geometry: {setDrawRange: (a, n) => arcT.geometry.setDrawRange(a, n, 41)}};
-  const midX = (m.xs + P.end.x) / 2, span = Math.max(26, Math.abs(P.end.x - m.xs) + 22);
-  cam.position.set(midX - f * span * 0.18, span * 0.85 + 6, span * 1.0 + 14); cam.lookAt(midX + f * 2, 0, -2);
-  const along = (pts, u) => { const n = pts.length - 1, x = Math.max(0, Math.min(0.9999, u)) * n, i = Math.floor(x); return pts[i].clone().lerp(pts[i + 1], x - i); };
+    const from = P(m.xs - f * (m.kind === 'punt' ? 13 : m.kind === 'fg' ? 7 : 0), 0), to = m.kind === 'fg' ? P(f * 60, m.score ? 0.6 : 5.5) : P(m.xe, lat * 8);
+    flight = [from, to]; kick = true; endPt = to; carrier = [from, from];
+  } else { endPt = P(m.xe, 0); carrier = [qb0, qb0]; }
+  /* ---- view window ---- */
+  const lo = Math.min(m.xs, endPt.x) - 13, hi = Math.max(m.xs, endPt.x) + 13, vw = Math.max(50, hi - lo), cx = (lo + hi) / 2;
+  const vx = Math.max(-62, Math.min(62 - vw, cx - vw / 2)), VBW = vw * U, VBH = F_W * U + PAD * 2;
+  const svg = d3.create('svg').attr('viewBox', X(vx) + ' 0 ' + VBW + ' ' + VBH).attr('width', '100%').attr('role', 'img').attr('aria-label', 'Replay diagram of the last play: ' + m.text).style('display', 'block');
+  const defs = svg.append('defs');
+  const turf = defs.append('filter').attr('id', 'fbTurf').attr('x', 0).attr('y', 0).attr('width', '100%').attr('height', '100%');
+  turf.append('feTurbulence').attr('type', 'fractalNoise').attr('baseFrequency', '0.85 0.5').attr('numOctaves', 2).attr('seed', 4).attr('result', 'n');
+  turf.append('feColorMatrix').attr('in', 'n').attr('type', 'matrix').attr('values', '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -0.9 0.62').attr('result', 'a');
+  turf.append('feComposite').attr('in', 'a').attr('in2', 'SourceGraphic').attr('operator', 'in');
+  const sheen = defs.append('linearGradient').attr('id', 'fbSheen').attr('x1', 0).attr('y1', 0).attr('x2', 0).attr('y2', 1);
+  [[0, 'rgba(255,255,255,.10)'], [0.5, 'rgba(255,255,255,0)'], [1, 'rgba(0,0,0,.22)']].forEach(([o, c]) => sheen.append('stop').attr('offset', o).attr('stop-color', c));
+  const vig = defs.append('radialGradient').attr('id', 'fbVig').attr('cx', '50%').attr('cy', '50%').attr('r', '75%');
+  [[0.55, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,.42)']].forEach(([o, c]) => vig.append('stop').attr('offset', o).attr('stop-color', c));
+  const ballG = defs.append('radialGradient').attr('id', 'fbBall').attr('cx', '40%').attr('cy', '35%');
+  [[0, '#b9713a'], [1, '#5e3216']].forEach(([o, c]) => ballG.append('stop').attr('offset', o).attr('stop-color', c));
+  const glow = defs.append('filter').attr('id', 'fbGlow').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%'); glow.append('feGaussianBlur').attr('stdDeviation', 3.2);
+  const bg = svg.append('g');
+  bg.append('rect').attr('x', 0).attr('y', 0).attr('width', 1200).attr('height', VBH).attr('fill', '#17461f');
+  d3.range(20).forEach((i) => bg.append('rect').attr('x', X(-50 + i * 5)).attr('y', PAD).attr('width', 5 * U).attr('height', F_W * U).attr('fill', i % 2 ? '#2f8a3f' : '#28793a'));
+  [[-60, m.away], [50, m.home]].forEach(([x, t], i) => {
+    bg.append('rect').attr('x', X(x)).attr('y', PAD).attr('width', 10 * U).attr('height', F_W * U).attr('fill', t.color);
+    bg.append('rect').attr('x', X(x)).attr('y', PAD).attr('width', 10 * U).attr('height', F_W * U).attr('fill', 'rgba(0,0,0,.18)');
+    const label = String(t.long || t.short).split(' ').slice(-1)[0].toUpperCase();
+    bg.append('text').attr('transform', 'translate(' + (X(x) + 5 * U) + ',' + Z(0) + ') rotate(' + (i ? 90 : -90) + ')').attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
+      .attr('font-family', 'Impact, Haettenschweiler, Arial Narrow Bold, sans-serif').attr('font-size', Math.min(64, 520 / Math.max(5, label.length) * 1.5)).attr('letter-spacing', 6).attr('fill', '#fff').attr('fill-opacity', 0.92).text(label);
+  });
+  bg.append('rect').attr('x', 0).attr('y', 0).attr('width', 1200).attr('height', VBH).attr('fill', '#fff').attr('filter', 'url(#fbTurf)').attr('opacity', 0.16);
+  const paint = bg.append('g').attr('stroke', '#fff').attr('stroke-opacity', 0.88).attr('fill', 'none');
+  paint.append('rect').attr('x', X(-60)).attr('y', PAD).attr('width', 1200).attr('height', F_W * U).attr('stroke-width', 5);
+  d3.range(0, 101, 5).forEach((y) => paint.append('line').attr('x1', X(-50 + y)).attr('x2', X(-50 + y)).attr('y1', PAD).attr('y2', PAD + F_W * U).attr('stroke-width', y % 10 === 0 || y === 0 ? 2.6 : 1.8));
+  const hash = college ? 6.67 : 3.08;
+  d3.range(1, 100).forEach((y) => { if (y % 5) [[-HALF + 0.3, -HALF + 1], [-hash - 0.35, -hash + 0.35], [hash - 0.35, hash + 0.35], [HALF - 1, HALF - 0.3]].forEach(([a, b]) => paint.append('line').attr('x1', X(-50 + y)).attr('x2', X(-50 + y)).attr('y1', Z(a)).attr('y2', Z(b)).attr('stroke-width', 1.3)); });
+  const nums = bg.append('g').attr('fill', '#fff').attr('fill-opacity', 0.9).attr('font-family', 'Georgia, Times New Roman, serif').attr('font-weight', 700).attr('font-size', 36).attr('text-anchor', 'middle');
+  d3.range(10, 91, 10).forEach((y) => { const n = y <= 50 ? y : 100 - y, a = String(n)[0], b = String(n)[1];
+    [[HALF - 11, 0], [-HALF + 11, 180]].forEach(([z, rot]) => { const g = nums.append('g').attr('transform', 'translate(' + X(-50 + y) + ',' + Z(z) + ') rotate(' + rot + ')');
+      g.append('text').attr('x', -13).attr('y', 12).text(a); g.append('text').attr('x', 13).attr('y', 12).text(b);
+      if (y !== 50) { const s = (y < 50 ? -1 : 1) * (rot ? -1 : 1); g.append('path').attr('d', 'M' + s * 30 + ',-2 l' + s * 9 + ',5 l' + -s * 9 + ',5 z'); } }); });
+  bg.append('rect').attr('x', 0).attr('y', 0).attr('width', 1200).attr('height', VBH).attr('fill', 'url(#fbSheen)');
+  /* ---- broadcast lines ---- */
+  const bandLine = (x, color) => { const g = svg.append('g'); g.append('rect').attr('x', X(x) - 5).attr('y', PAD).attr('width', 10).attr('height', F_W * U).attr('fill', color).attr('opacity', 0.35).attr('filter', 'url(#fbGlow)'); g.append('rect').attr('x', X(x) - 1.8).attr('y', PAD).attr('width', 3.6).attr('height', F_W * U).attr('fill', color).attr('opacity', 0.95); };
+  bandLine(m.xs, '#2f8dff'); if (m.firstX !== null) bandLine(m.firstX, '#ffd21f');
+  if (m.downText) { const tg = svg.append('g').attr('transform', 'translate(' + (X(m.xs) - f * 44) + ',' + (PAD + 20) + ')'); tg.append('rect').attr('x', -40).attr('y', -13).attr('width', 80).attr('height', 26).attr('rx', 5).attr('fill', '#0b1626').attr('opacity', 0.86); tg.append('text').attr('text-anchor', 'middle').attr('y', 5.5).attr('fill', '#ffd21f').attr('font-family', 'system-ui,sans-serif').attr('font-weight', 800).attr('font-size', 15).text(m.downText.toUpperCase()); }
+  /* ---- trails ---- */
+  const toPath = (pts) => d3.line().x((p) => X(p.x)).y((p) => Z(p.z)).curve(d3.curveCatmullRom.alpha(0.5))(pts);
+  const trail = (pts, color, w, dash) => { const g = svg.append('g'); if (pts.length < 2) return {set: () => {}}; const d = toPath(pts);
+    g.append('path').attr('d', d).attr('fill', 'none').attr('stroke', '#000').attr('stroke-opacity', 0.35).attr('stroke-width', w + 3).attr('stroke-linecap', 'round').attr('pathLength', 1).attr('stroke-dasharray', '0 1');
+    g.append('path').attr('d', d).attr('fill', 'none').attr('stroke', color).attr('stroke-width', w).attr('stroke-linecap', 'round').attr('pathLength', 1).attr('stroke-dasharray', '0 1');
+    const ps = g.selectAll('path'); if (dash) g.attr('opacity', 0.9); return {set: (u) => ps.attr('stroke-dasharray', Math.max(0, Math.min(1, u)) + ' 1')}; };
+  const routeTrail = trail(carrier, '#ffe14a', 4.5), flightTrail = trail(flight || [], '#ffffff', 2.2, true);
+  const spot = svg.append('g').attr('transform', 'translate(' + X(endPt.x) + ',' + Z(endPt.z) + ')').attr('opacity', 0);
+  spot.append('circle').attr('r', 13).attr('fill', 'none').attr('stroke', '#fff').attr('stroke-width', 2.5); spot.append('circle').attr('r', 4).attr('fill', '#fff');
+  /* ---- players ---- */
+  const layer = svg.append('g');
+  const figure = (team, isAway, face, key) => {
+    const jersey = isAway ? '#f4f5f7' : team.color, trim = isAway ? team.color : '#ffffff', g = layer.append('g');
+    const body = g.append('g');
+    body.append('ellipse').attr('cx', 3).attr('cy', 4.5).attr('rx', 9.5).attr('ry', 12.5).attr('fill', '#000').attr('opacity', 0.28);
+    if (key) body.append('circle').attr('r', 17).attr('fill', 'none').attr('stroke', '#ffe14a').attr('stroke-width', 2.2).attr('opacity', 0.9);
+    [-1, 1].forEach((s) => { body.append('ellipse').attr('cx', 2.5).attr('cy', s * 11.5).attr('rx', 5).attr('ry', 3.4).attr('fill', jersey).attr('stroke', 'rgba(0,0,0,.45)').attr('stroke-width', 0.8); body.append('circle').attr('cx', 7).attr('cy', s * 12.2).attr('r', 2.4).attr('fill', '#c98d63'); });
+    body.append('rect').attr('x', -6.5).attr('y', -11).attr('width', 12).attr('height', 22).attr('rx', 5.5).attr('fill', jersey).attr('stroke', 'rgba(0,0,0,.5)').attr('stroke-width', 0.9);
+    body.append('rect').attr('x', -6.5).attr('y', -11).attr('width', 3.2).attr('height', 22).attr('rx', 1.6).attr('fill', trim).attr('opacity', 0.85);
+    body.append('circle').attr('cx', 2).attr('cy', 0).attr('r', 5.8).attr('fill', team.color).attr('stroke', 'rgba(0,0,0,.55)').attr('stroke-width', 0.9);
+    body.append('rect').attr('x', -3.6).attr('y', -1).attr('width', 11).attr('height', 2).attr('rx', 1).attr('fill', '#fff').attr('opacity', 0.9);
+    body.append('path').attr('d', 'M6.4,-3.6 Q9.6,0 6.4,3.6').attr('fill', 'none').attr('stroke', '#d9dde3').attr('stroke-width', 1.5).attr('stroke-linecap', 'round');
+    body.append('ellipse').attr('cx', 0.5).attr('cy', -2.2).attr('rx', 2.6).attr('ry', 1.4).attr('fill', '#fff').attr('opacity', 0.28);
+    return {g: g, body: body, face: face, label: null};
+  };
+  const place = (o, p, face) => { o.p = p; o.g.attr('transform', 'translate(' + X(p.x) + ',' + Z(p.z) + ')'); o.body.attr('transform', 'rotate(' + (face === undefined ? o.face : face) + ') scale(0.95)'); };
+  const tag = (o, text) => { if (!text) return; const w = text.length * 7.4 + 14; const t = o.g.append('g').attr('transform', 'translate(0,-27)'); t.append('rect').attr('x', -w / 2).attr('y', -10).attr('width', w).attr('height', 19).attr('rx', 9.5).attr('fill', '#0b1626').attr('opacity', 0.88); t.append('text').attr('text-anchor', 'middle').attr('y', 4.2).attr('fill', '#fff').attr('font-family', 'system-ui,sans-serif').attr('font-weight', 700).attr('font-size', 12.5).text(text); };
+  const offAway = m.off === m.away, offFace = f > 0 ? 0 : 180, defFace = f > 0 ? 180 : 0;
+  const scrim = m.kind === 'pass' || m.kind === 'run' || m.kind === 'sack' || m.kind === 'other';
+  const extras = [];
+  const add = (team, isAway, face, start, end, key) => { const o = figure(team, isAway, face, key); o.a = start; o.b = end || start; place(o, start); extras.push(o); return o; };
+  const ballEnd = endPt, toward = (p, k) => lerp(p, ballEnd, k);
+  let qb = null, mover = null;
+  if (scrim) {
+    const olPush = m.kind === 'run' ? 1.6 : -1.3;
+    [-4.4, -2.2, 0, 2.2, 4.4].forEach((z) => add(m.off, offAway, offFace, P(m.xs - f * 1.0, z), P(m.xs - f * 1.0 + f * olPush, z * 1.1)));
+    add(m.off, offAway, offFace, P(m.xs - f * 1.0, -side * 6.6), P(m.xs + f * (m.kind === 'run' ? 2 : 6), -side * 8.5));
+    add(m.off, offAway, offFace, P(m.xs - f * 0.4, -side * 20), P(m.xs + f * 14, -side * 19));
+    add(m.off, offAway, offFace, P(m.xs - f * 1.4, -side * 12), P(m.xs + f * 9, -side * 6));
+    if (m.kind !== 'run') add(m.off, offAway, offFace, P(m.xs - f * 6.5, -side * 2.2), P(m.xs - f * 5, -side * 3.5));
+    if (m.kind !== 'pass') add(m.off, offAway, offFace, P(m.xs - f * 0.4, side * 20), P(m.xs + f * 8, side * 20));
+    [-5.6, -1.9, 1.9, 5.6].forEach((z) => add(m.def, !offAway, defFace, P(m.xs + f * 1.3, z), toward(P(m.xs + f * (m.kind === 'run' ? 0.6 : -2.6), z * 0.9), 0.12)));
+    [-7.5, 0, 7.5].forEach((z) => add(m.def, !offAway, defFace, P(m.xs + f * 5.2, z), toward(P(m.xs + f * 5.2, z), 0.3)));
+    [-20, 20].forEach((z) => add(m.def, !offAway, defFace, P(m.xs + f * 6.5, z), toward(P(m.xs + f * 13, z), z * side > 0 ? 0.55 : 0.1)));
+    [-9, 9].forEach((z) => add(m.def, !offAway, defFace, P(m.xs + f * 13.5, z), toward(P(m.xs + f * 16, z), 0.35)));
+    qb = figure(m.off, offAway, offFace, m.kind !== 'run'); place(qb, qb0);
+    if (m.kind !== 'sack' && m.kind !== 'other') { mover = figure(m.off, offAway, offFace, true); place(mover, carrier[0]); }
+    if (m.kind === 'pass') { tag(qb, names.first); if (mover) tag(mover, names.to); } else if (m.kind === 'run') { if (mover) tag(mover, names.first); } else tag(qb, names.first);
+  } else if (kick) { qb = figure(m.off, offAway, offFace, true); place(qb, flight[0]); tag(qb, names.first); }
+  /* ---- ball ---- */
+  const ballShadow = svg.append('ellipse').attr('rx', 6).attr('ry', 3.6).attr('fill', '#000').attr('opacity', 0.3);
+  const ball = svg.append('g'); const ballIn = ball.append('g');
+  ballIn.append('path').attr('d', 'M-8,0 Q0,-6.6 8,0 Q0,6.6 -8,0 Z').attr('fill', 'url(#fbBall)').attr('stroke', '#3a1d0b').attr('stroke-width', 0.8);
+  ballIn.append('path').attr('d', 'M-3,0 H3 M-2,-1.4 V1.4 M0,-1.6 V1.6 M2,-1.4 V1.4').attr('stroke', '#fff').attr('stroke-width', 0.9).attr('fill', 'none');
+  /* ---- result toast ---- */
+  const word = m.score ? (m.kind === 'fg' ? 'FIELD GOAL' : 'TOUCHDOWN') : m.turnover ? 'TURNOVER' : m.kind === 'pass' && !m.complete ? 'INCOMPLETE' : m.kind === 'sack' ? 'SACK' : m.gain !== null && (m.kind === 'run' || m.kind === 'pass') ? (m.gain > 0 ? '+' : '') + m.gain + ' YDS' : m.kind === 'punt' ? 'PUNT' : m.kind === 'kickoff' ? 'KICKOFF' : '';
+  const toast = svg.append('g').attr('opacity', 0);
+  if (word) { const tw = word.length * 17 + 34, tx = X(vx) + VBW / 2; toast.attr('transform', 'translate(' + tx + ',' + (VBH - PAD - 30) + ')'); toast.append('rect').attr('x', -tw / 2).attr('y', -22).attr('width', tw).attr('height', 40).attr('rx', 8).attr('fill', '#0b1626').attr('opacity', 0.9); toast.append('rect').attr('x', -tw / 2).attr('y', -22).attr('width', 7).attr('height', 40).attr('rx', 3).attr('fill', m.off.color); toast.append('text').attr('text-anchor', 'middle').attr('x', 3).attr('y', 8).attr('fill', '#fff').attr('font-family', 'Impact, Haettenschweiler, Arial Narrow Bold, sans-serif').attr('font-size', 27).attr('letter-spacing', 2).text(word); }
+  svg.append('rect').attr('x', X(vx)).attr('y', 0).attr('width', VBW).attr('height', VBH).attr('fill', 'url(#fbVig)').attr('pointer-events', 'none');
+  el.appendChild(svg.node());
+  /* ---- animation ---- */
+  const along = (pts, u) => { const n = pts.length - 1, x = Math.max(0, Math.min(0.9999, u)) * n, i = Math.floor(x); return lerp(pts[i], pts[i + 1], x - i); };
   const seg = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
-  const LOOP = 6.2;
-  FBF.renderer = renderer; FBF.t0 = performance.now();
+  const heading = (a, b, fallback) => (Math.abs(b.x - a.x) + Math.abs(b.z - a.z) < 0.01 ? fallback : Math.atan2(b.z - a.z, b.x - a.x) * 180 / Math.PI);
+  const LOOP = 6.4; FBF.t0 = performance.now();
   const frame = (now) => {
     const t = FB_FIXED_T !== null ? FB_FIXED_T : ((now - FBF.t0) / 1000) % LOOP;
-    qb.position.copy(P.qb0); mover.visible = m.kind !== 'sack' && m.kind !== 'other' && !flight || m.kind === 'pass';
-    let ballPos;
+    const live = fbEase(seg(t, 0.8, 4.1));
+    extras.forEach((o) => { const p = lerp(o.a, o.b, live); place(o, p, heading(o.a, o.b, o.face)); });
+    let bp = endPt, bh = 0, bdir = offFace, ru = 0, fu = 0;
     if (m.kind === 'pass') {
-      qb.position.copy(P.qb0.clone().lerp(P.qb1, seg(t, 0.7, 1.6)));
+      const q = lerp(qb0, qb1, fbEase(seg(t, 0.8, 1.7))); place(qb, q, heading(q, flight[1], offFace));
       const stemEnd = m.complete ? (carrier.length - 2) / (carrier.length - 1) : 1;
-      const u = t < 2.7 ? seg(t, 0.7, 2.7) * stemEnd : stemEnd + seg(t, 2.7, 4.1) * (1 - stemEnd);
-      mover.position.copy(along(carrier, u));
-      ballPos = t < 1.7 ? V(qb.position.x, qb.position.z, 2.2) : t < 2.7 ? arcAt(seg(t, 1.7, 2.7)) : m.complete ? V(mover.position.x, mover.position.z, 2.2) : V(flight[1].x, flight[1].z, 0.5);
-      arcLine.geometry.setDrawRange(0, Math.round(41 * seg(t, 1.7, 2.7))); routeLine.geometry.setDrawRange(0, Math.round(route.length * u));
+      ru = t < 2.8 ? fbEase(seg(t, 0.8, 2.8)) * stemEnd : stemEnd + seg(t, 2.8, 4.2) * (1 - stemEnd);
+      const mp = along(carrier, ru), ahead = along(carrier, Math.min(1, ru + 0.03)); place(mover, mp, heading(mp, ahead, offFace));
+      fu = seg(t, 1.8, 2.8);
+      if (t < 1.8) { bp = P(q.x + f * 0.6, q.z + 0.5); } else if (t < 2.8) { bp = lerp(flight[0], flight[1], fu); bh = Math.sin(Math.PI * fu); bdir = heading(flight[0], flight[1], offFace); } else if (m.complete) { bp = P(mp.x + f * 0.5, mp.z + 0.5); } else { bp = lerp(flight[1], P(flight[1].x + f * 2.5, flight[1].z + side * 1.5), seg(t, 2.8, 3.4)); bh = 0.25 * Math.abs(Math.sin(seg(t, 2.8, 3.4) * Math.PI * 2)); }
     } else if (m.kind === 'run') {
-      qb.position.copy(P.qb0.clone().lerp(V(m.xs - f * 4, 0.5), seg(t, 0.7, 1.3)));
-      const u = seg(t, 0.9, 3.9); mover.position.copy(along(carrier, u)); ballPos = t < 1.3 ? V(qb.position.x, qb.position.z, 2.2) : V(mover.position.x, mover.position.z, 2.2);
-      routeLine.geometry.setDrawRange(0, Math.round(route.length * u)); arcLine.geometry.setDrawRange(0, 0);
-    } else if (m.kind === 'sack') {
-      const u = seg(t, 0.7, 3.2); qb.position.copy(along(carrier, u)); mover.visible = false; ballPos = V(qb.position.x, qb.position.z, 2.2);
-      routeLine.geometry.setDrawRange(0, Math.round(route.length * u)); arcLine.geometry.setDrawRange(0, 0);
-    } else if (flight) {
-      const u = seg(t, 0.9, 3.9); qb.position.set(flight[0].x, 0, flight[0].z); mover.visible = false; ballPos = arcAt(u);
-      arcLine.geometry.setDrawRange(0, Math.round(41 * u)); routeLine.geometry.setDrawRange(0, 0);
-    } else { mover.visible = false; ballPos = V(P.end.x, P.end.z, 0.6); routeLine.geometry.setDrawRange(0, 0); arcLine.geometry.setDrawRange(0, 0); }
-    ball.position.copy(ballPos); ball.rotation.y += 0.25;
-    ring.scale.setScalar(1 + 0.25 * Math.sin(now / 220));
-    renderer.render(scene, cam);
+      const q = lerp(qb0, P(m.xs - f * 4.2, 0.6), fbEase(seg(t, 0.8, 1.4))); place(qb, q);
+      ru = fbEase(seg(t, 1.0, 4.1)); const mp = along(carrier, ru), ahead = along(carrier, Math.min(1, ru + 0.03)); place(mover, mp, heading(mp, ahead, offFace));
+      bp = t < 1.4 ? P(q.x + f * 0.6, q.z + 0.5) : P(mp.x + f * 0.5, mp.z + 0.5);
+    } else if (m.kind === 'sack') { ru = fbEase(seg(t, 0.8, 3.4)); const q = along(carrier, ru); place(qb, q); bp = P(q.x + f * 0.6, q.z + 0.5); }
+    else if (kick) { fu = seg(t, 1.0, 4.0); bp = lerp(flight[0], flight[1], fu); bh = Math.sin(Math.PI * fu) * 1.7; bdir = heading(flight[0], flight[1], offFace); }
+    routeTrail.set(ru); flightTrail.set(fu);
+    const bx = X(bp.x), bz = Z(bp.z), lift = bh * 26, sc = 1 + bh * 0.9;
+    ballShadow.attr('cx', bx + 2 + lift * 0.25).attr('cy', bz + 3 + lift * 0.5).attr('opacity', 0.3 - bh * 0.12).attr('rx', 6 * (1 + bh * 0.3));
+    ball.attr('transform', 'translate(' + bx + ',' + (bz - lift) + ') rotate(' + bdir + ') scale(' + sc + ')'); ballIn.attr('transform', bh > 0.02 ? 'scale(1,' + (0.72 + 0.28 * Math.cos(now / 45)) + ')' : null);
+    const done = seg(t, 4.1, 4.5); spot.attr('opacity', done).attr('transform', 'translate(' + X(endPt.x) + ',' + Z(endPt.z) + ') scale(' + (1 + 0.18 * Math.sin(now / 200)) + ')'); toast.attr('opacity', done);
     FBF.raf = requestAnimationFrame(frame);
   };
   FBF.raf = requestAnimationFrame(frame);
@@ -186,8 +244,8 @@ function fbShowPlay(card, m, note) {
 }
 
 const FB_SAMPLES = [
-  {type: {text: 'Pass Reception'}, text: 'Sample play: quarterback pass deep right to the wide receiver for 27 yards.', statYardage: 27, start: {down: 2, distance: 7, yardsToEndzone: 62, team: {id: 'A'}}, end: {yardsToEndzone: 35}, period: {number: 2}, clock: {displayValue: '8:41'}},
-  {type: {text: 'Rush'}, text: 'Sample play: running back runs off left tackle for 9 yards.', statYardage: 9, start: {down: 1, distance: 10, yardsToEndzone: 44, team: {id: 'H'}}, end: {yardsToEndzone: 35}, period: {number: 3}, clock: {displayValue: '11:02'}},
+  {type: {text: 'Pass Reception'}, text: '(Shotgun) Q.Back pass deep right to W.Receiver for 27 yards. Sample play.', statYardage: 27, start: {down: 2, distance: 7, yardsToEndzone: 62, team: {id: 'A'}}, end: {yardsToEndzone: 35}, period: {number: 2}, clock: {displayValue: '8:41'}},
+  {type: {text: 'Rush'}, text: 'R.Back left tackle for 9 yards. Sample play.', statYardage: 9, start: {down: 1, distance: 10, yardsToEndzone: 44, team: {id: 'H'}}, end: {yardsToEndzone: 35}, period: {number: 3}, clock: {displayValue: '11:02'}},
 ];
 let fbSampleIx = 0;
 const FB_FIXED_T = /[?&]t=([\d.]+)/.test(location.search) ? +location.search.match(/[?&]t=([\d.]+)/)[1] : null;
@@ -199,7 +257,7 @@ async function fbFieldTick() {
   const sides = league === 'nfl' ? nflSides(g) : cfbSides(g); if (!sides) return;
   const l = liveOf(league, g), status = l ? l.status : 'scheduled';
   const idle = card.querySelector('.fb-fidle'), stage = card.querySelector('.fb-fstage'), key = league + '|' + g.id + '|' + status;
-  const ctx = {homeId: l ? l.home_id : 'H', awayId: l ? l.away_id : 'A', home: sides[1], away: sides[0]};
+  const ctx = {homeId: l ? l.home_id : 'H', awayId: l ? l.away_id : 'A', home: sides[1], away: sides[0], college: league === 'cfb'};
   if (status !== 'live' && status !== 'final') {
     if (FBF.key !== key) { FBF.key = key; FBF.sample = false; if (FBF.raf) cancelAnimationFrame(FBF.raf); stage.hidden = true; card.querySelector('.fb-fchips').replaceChildren(); card.querySelector('.fb-fcap').textContent = ''; idle.hidden = false; }
     return;
@@ -219,7 +277,7 @@ async function fbFieldTick() {
 document.querySelectorAll('.fb-fsample').forEach((b) => b.addEventListener('click', () => {
   const card = b.closest('.fb-field'), tab = b.closest('.fb-sec'), g = tab.id === 'nfl' ? curGame() : curCfb(); if (!g) return;
   const sides = tab.id === 'nfl' ? nflSides(g) : cfbSides(g); if (!sides) return;
-  const m = fbParsePlay(FB_SAMPLES[fbSampleIx++ % FB_SAMPLES.length], {homeId: 'H', awayId: 'A', home: sides[1], away: sides[0]});
+  const m = fbParsePlay(FB_SAMPLES[fbSampleIx++ % FB_SAMPLES.length], {homeId: 'H', awayId: 'A', home: sides[1], away: sides[0], college: tab.id === 'cfb'});
   const lv = liveOf(tab.id, g); FBF.key = tab.id + '|' + g.id + '|' + (lv ? lv.status : 'scheduled'); FBF.sample = true; card.querySelectorAll('.fb-fidle p').forEach((x) => { x.hidden = true; }); fbShowPlay(card, m, 'Sample, not a real play');
 }));
 setInterval(() => { fbFieldTick().catch((e) => console.error(e)); }, 1000);
