@@ -58,6 +58,13 @@ function fbPickPlay(summary, situation) {
   return null;
 }
 
+function fbPickPlays(summary, situation, max) {
+  const real = (p) => p && p.text && !/timeout|end of|end period|coin toss|two-minute warning/i.test(String((p.type && p.type.text) || '') + ' ' + p.text);
+  const out = [], d = summary && summary.drives;
+  if (d) (d.previous || []).concat(d.current ? [d.current] : []).forEach((dr) => (dr.plays || []).forEach((p) => { if (real(p)) out.push({play: p, driveTeamId: dr.team && dr.team.id}); }));
+  if (!out.length && situation && real(situation.lastPlay)) out.push({play: situation.lastPlay, driveTeamId: situation.possession});
+  return out.slice(-(max || 12));
+}
 const fbEase = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
 function fbNames(text) {
   const N = "([A-Z][A-Za-z'\\-]*\\.? ?[A-Z][A-Za-z'\\-]+(?: (?:Jr|Sr|II|III|IV)\\.?)?)";
@@ -144,111 +151,141 @@ function fbBuild(el, m) {
   const routeTrail = trail(carrier, '#ffe14a', 4.5), flightTrail = trail(flight || [], '#ffffff', 2.2, true);
   const spot = svg.append('g').attr('transform', 'translate(' + X(endPt.x) + ',' + Z(endPt.z) + ')').attr('opacity', 0);
   spot.append('circle').attr('r', 13).attr('fill', 'none').attr('stroke', '#fff').attr('stroke-width', 2.5); spot.append('circle').attr('r', 4).attr('fill', '#fff');
-  /* ---- players ---- */
-  const layer = svg.append('g');
-  const figure = (team, isAway, face, key) => {
-    const jersey = isAway ? '#f4f5f7' : team.color, trim = isAway ? team.color : '#ffffff', g = layer.append('g');
-    const body = g.append('g');
-    body.append('ellipse').attr('cx', 3).attr('cy', 4.5).attr('rx', 9.5).attr('ry', 12.5).attr('fill', '#000').attr('opacity', 0.28);
-    if (key) body.append('circle').attr('r', 17).attr('fill', 'none').attr('stroke', '#ffe14a').attr('stroke-width', 2.2).attr('opacity', 0.9);
-    [-1, 1].forEach((s) => { body.append('ellipse').attr('cx', 2.5).attr('cy', s * 11.5).attr('rx', 5).attr('ry', 3.4).attr('fill', jersey).attr('stroke', 'rgba(0,0,0,.45)').attr('stroke-width', 0.8); body.append('circle').attr('cx', 7).attr('cy', s * 12.2).attr('r', 2.4).attr('fill', '#c98d63'); });
-    body.append('rect').attr('x', -6.5).attr('y', -11).attr('width', 12).attr('height', 22).attr('rx', 5.5).attr('fill', jersey).attr('stroke', 'rgba(0,0,0,.5)').attr('stroke-width', 0.9);
-    body.append('rect').attr('x', -6.5).attr('y', -11).attr('width', 3.2).attr('height', 22).attr('rx', 1.6).attr('fill', trim).attr('opacity', 0.85);
-    body.append('circle').attr('cx', 2).attr('cy', 0).attr('r', 5.8).attr('fill', team.color).attr('stroke', 'rgba(0,0,0,.55)').attr('stroke-width', 0.9);
-    body.append('rect').attr('x', -3.6).attr('y', -1).attr('width', 11).attr('height', 2).attr('rx', 1).attr('fill', '#fff').attr('opacity', 0.9);
-    body.append('path').attr('d', 'M6.4,-3.6 Q9.6,0 6.4,3.6').attr('fill', 'none').attr('stroke', '#d9dde3').attr('stroke-width', 1.5).attr('stroke-linecap', 'round');
-    body.append('ellipse').attr('cx', 0.5).attr('cy', -2.2).attr('rx', 2.6).attr('ry', 1.4).attr('fill', '#fff').attr('opacity', 0.28);
-    return {g: g, body: body, face: face, label: null};
+  /* ---- players: clean tracking-style markers ---- */
+  const tails = svg.append('g'), layer = svg.append('g');
+  const dot = (team, isAway, label, key) => {
+    const g = layer.append('g'), r = key ? 13.5 : 11, fill = isAway ? '#f6f7f9' : team.color, ring = isAway ? team.color : '#ffffff';
+    g.append('circle').attr('cx', 1.5).attr('cy', 2.5).attr('r', r + 1).attr('fill', '#000').attr('opacity', 0.3);
+    g.append('circle').attr('r', r).attr('fill', fill).attr('stroke', ring).attr('stroke-width', key ? 3.4 : 2.6);
+    g.append('text').attr('text-anchor', 'middle').attr('y', 3.4).attr('fill', isAway ? '#10151c' : '#ffffff').attr('font-family', 'system-ui,-apple-system,sans-serif').attr('font-weight', 800).attr('font-size', key ? 10.5 : 9.2).attr('letter-spacing', -0.2).text(label);
+    const tail = tails.append('line').attr('stroke', isAway ? '#ffffff' : team.color).attr('stroke-opacity', 0.45).attr('stroke-width', 3.2).attr('stroke-linecap', 'round');
+    return {g: g, tail: tail};
   };
-  const place = (o, p, face) => { o.p = p; o.g.attr('transform', 'translate(' + X(p.x) + ',' + Z(p.z) + ')'); o.body.attr('transform', 'rotate(' + (face === undefined ? o.face : face) + ') scale(0.95)'); };
-  const tag = (o, text) => { if (!text) return; const w = text.length * 7.4 + 14; const t = o.g.append('g').attr('transform', 'translate(0,-27)'); t.append('rect').attr('x', -w / 2).attr('y', -10).attr('width', w).attr('height', 19).attr('rx', 9.5).attr('fill', '#0b1626').attr('opacity', 0.88); t.append('text').attr('text-anchor', 'middle').attr('y', 4.2).attr('fill', '#fff').attr('font-family', 'system-ui,sans-serif').attr('font-weight', 700).attr('font-size', 12.5).text(text); };
-  const offAway = m.off === m.away, offFace = f > 0 ? 0 : 180, defFace = f > 0 ? 180 : 0;
-  const scrim = m.kind === 'pass' || m.kind === 'run' || m.kind === 'sack' || m.kind === 'other';
-  const extras = [];
-  const add = (team, isAway, face, start, end, key) => { const o = figure(team, isAway, face, key); o.a = start; o.b = end || start; place(o, start); extras.push(o); return o; };
-  const ballEnd = endPt, toward = (p, k) => lerp(p, ballEnd, k);
+  const place = (o, p) => { o.g.attr('transform', 'translate(' + X(p.x) + ',' + Z(p.z) + ')'); if (o.a) o.tail.attr('x1', X(o.a.x)).attr('y1', Z(o.a.z)).attr('x2', X(p.x)).attr('y2', Z(p.z)); };
+  const tag = (o, text) => { if (!text) return; const w = text.length * 7.4 + 14; const t = o.g.append('g').attr('transform', 'translate(0,-27)'); t.append('rect').attr('x', -w / 2).attr('y', -10).attr('width', w).attr('height', 19).attr('rx', 9.5).attr('fill', '#0b1626').attr('opacity', 0.9); t.append('text').attr('text-anchor', 'middle').attr('y', 4.2).attr('fill', '#fff').attr('font-family', 'system-ui,sans-serif').attr('font-weight', 700).attr('font-size', 12.5).text(text); };
+  const offAway = m.off === m.away, scrim = m.kind === 'pass' || m.kind === 'run' || m.kind === 'sack' || m.kind === 'other';
+  const extras = [], toward = (p, k) => lerp(p, endPt, k);
+  const add = (team, isAway, label, start, end) => { const o = dot(team, isAway, label, false); o.a = start; o.b = end || start; place(o, start); extras.push(o); return o; };
   let qb = null, mover = null;
   if (scrim) {
     const olPush = m.kind === 'run' ? 1.6 : -1.3;
-    [-4.4, -2.2, 0, 2.2, 4.4].forEach((z) => add(m.off, offAway, offFace, P(m.xs - f * 1.0, z), P(m.xs - f * 1.0 + f * olPush, z * 1.1)));
-    add(m.off, offAway, offFace, P(m.xs - f * 1.0, -side * 6.6), P(m.xs + f * (m.kind === 'run' ? 2 : 6), -side * 8.5));
-    add(m.off, offAway, offFace, P(m.xs - f * 0.4, -side * 20), P(m.xs + f * 14, -side * 19));
-    add(m.off, offAway, offFace, P(m.xs - f * 1.4, -side * 12), P(m.xs + f * 9, -side * 6));
-    if (m.kind !== 'run') add(m.off, offAway, offFace, P(m.xs - f * 6.5, -side * 2.2), P(m.xs - f * 5, -side * 3.5));
-    if (m.kind !== 'pass') add(m.off, offAway, offFace, P(m.xs - f * 0.4, side * 20), P(m.xs + f * 8, side * 20));
-    [-5.6, -1.9, 1.9, 5.6].forEach((z) => add(m.def, !offAway, defFace, P(m.xs + f * 1.3, z), toward(P(m.xs + f * (m.kind === 'run' ? 0.6 : -2.6), z * 0.9), 0.12)));
-    [-7.5, 0, 7.5].forEach((z) => add(m.def, !offAway, defFace, P(m.xs + f * 5.2, z), toward(P(m.xs + f * 5.2, z), 0.3)));
-    [-20, 20].forEach((z) => add(m.def, !offAway, defFace, P(m.xs + f * 6.5, z), toward(P(m.xs + f * 13, z), z * side > 0 ? 0.55 : 0.1)));
-    [-9, 9].forEach((z) => add(m.def, !offAway, defFace, P(m.xs + f * 13.5, z), toward(P(m.xs + f * 16, z), 0.35)));
-    qb = figure(m.off, offAway, offFace, m.kind !== 'run'); place(qb, qb0);
-    if (m.kind !== 'sack' && m.kind !== 'other') { mover = figure(m.off, offAway, offFace, true); place(mover, carrier[0]); }
+    [[-4.4, 'T'], [-2.2, 'G'], [0, 'C'], [2.2, 'G'], [4.4, 'T']].forEach(([z, n]) => add(m.off, offAway, n, P(m.xs - f * 1.0, z), P(m.xs - f * 1.0 + f * olPush, z * 1.1)));
+    add(m.off, offAway, 'TE', P(m.xs - f * 1.0, -side * 6.6), P(m.xs + f * (m.kind === 'run' ? 2 : 6), -side * 8.5));
+    add(m.off, offAway, 'WR', P(m.xs - f * 0.4, -side * 20), P(m.xs + f * 14, -side * 19));
+    add(m.off, offAway, 'WR', P(m.xs - f * 1.4, -side * 12), P(m.xs + f * 9, -side * 6));
+    if (m.kind !== 'run') add(m.off, offAway, 'RB', P(m.xs - f * 6.5, -side * 2.2), P(m.xs - f * 5, -side * 3.5));
+    if (m.kind !== 'pass') add(m.off, offAway, 'WR', P(m.xs - f * 0.4, side * 20), P(m.xs + f * 8, side * 20));
+    [[-5.6, 'DE'], [-1.9, 'DT'], [1.9, 'DT'], [5.6, 'DE']].forEach(([z, n]) => add(m.def, !offAway, n, P(m.xs + f * 1.3, z), toward(P(m.xs + f * (m.kind === 'run' ? 0.6 : -2.6), z * 0.9), 0.12)));
+    [-7.5, 0, 7.5].forEach((z) => add(m.def, !offAway, 'LB', P(m.xs + f * 5.2, z), toward(P(m.xs + f * 5.2, z), 0.3)));
+    [-20, 20].forEach((z) => add(m.def, !offAway, 'CB', P(m.xs + f * 6.5, z), toward(P(m.xs + f * 13, z), z * side > 0 ? 0.55 : 0.1)));
+    [-9, 9].forEach((z) => add(m.def, !offAway, 'S', P(m.xs + f * 13.5, z), toward(P(m.xs + f * 16, z), 0.35)));
+    qb = dot(m.off, offAway, 'QB', true); place(qb, qb0);
+    if (m.kind !== 'sack' && m.kind !== 'other') { mover = dot(m.off, offAway, m.kind === 'pass' ? 'WR' : 'RB', true); place(mover, carrier[0]); }
     if (m.kind === 'pass') { tag(qb, names.first); if (mover) tag(mover, names.to); } else if (m.kind === 'run') { if (mover) tag(mover, names.first); } else tag(qb, names.first);
-  } else if (kick) { qb = figure(m.off, offAway, offFace, true); place(qb, flight[0]); tag(qb, names.first); }
-  /* ---- ball ---- */
-  const ballShadow = svg.append('ellipse').attr('rx', 6).attr('ry', 3.6).attr('fill', '#000').attr('opacity', 0.3);
-  const ball = svg.append('g'); const ballIn = ball.append('g');
-  ballIn.append('path').attr('d', 'M-8,0 Q0,-6.6 8,0 Q0,6.6 -8,0 Z').attr('fill', 'url(#fbBall)').attr('stroke', '#3a1d0b').attr('stroke-width', 0.8);
-  ballIn.append('path').attr('d', 'M-3,0 H3 M-2,-1.4 V1.4 M0,-1.6 V1.6 M2,-1.4 V1.4').attr('stroke', '#fff').attr('stroke-width', 0.9).attr('fill', 'none');
-  /* ---- result toast ---- */
+  } else if (kick) { qb = dot(m.off, offAway, m.kind === 'punt' ? 'P' : 'K', true); place(qb, flight[0]); tag(qb, names.first); }
+  /* ---- ball: implied. A halo marks who has it; in the air it is a tracer on the flight arc ---- */
+  const halo = svg.append('circle').attr('r', 20).attr('fill', 'none').attr('stroke', '#ffe14a').attr('stroke-width', 3.2);
+  let arcPt = () => endPt, arcLen = 0;
+  const arcG = svg.append('g');
+  if (flight) {
+    const ax = X(flight[0].x), ay = Z(flight[0].z), bx = X(flight[1].x), by = Z(flight[1].z), dist = Math.hypot(bx - ax, by - ay);
+    const bow = dist * (kick ? 0.3 : 0.2), qx = (ax + bx) / 2, qy = (ay + by) / 2 - bow;
+    const d = 'M' + ax + ',' + ay + ' Q' + qx + ',' + qy + ' ' + bx + ',' + by;
+    arcG.append('path').attr('d', d).attr('fill', 'none').attr('stroke', '#000').attr('stroke-opacity', 0.3).attr('stroke-width', 6).attr('stroke-linecap', 'round').attr('pathLength', 1).attr('stroke-dasharray', '0 1');
+    arcG.append('path').attr('d', d).attr('fill', 'none').attr('stroke', '#ffffff').attr('stroke-width', 3).attr('stroke-linecap', 'round').attr('pathLength', 1).attr('stroke-dasharray', '0 1');
+    arcPt = (u) => { const v = 1 - u; return {u: ax * v * v + 2 * qx * v * u + bx * u * u, v: ay * v * v + 2 * qy * v * u + by * u * u}; }; arcLen = dist;
+  }
+  const arcPaths = arcG.selectAll('path');
+  const tracer = svg.append('g').attr('opacity', 0); tracer.append('circle').attr('r', 9).attr('fill', '#fff').attr('opacity', 0.35).attr('filter', 'url(#fbGlow)'); tracer.append('circle').attr('r', 4.2).attr('fill', '#fff');
+  /* ---- result banner ---- */
   const word = m.score ? (m.kind === 'fg' ? 'FIELD GOAL' : 'TOUCHDOWN') : m.turnover ? 'TURNOVER' : m.kind === 'pass' && !m.complete ? 'INCOMPLETE' : m.kind === 'sack' ? 'SACK' : m.gain !== null && (m.kind === 'run' || m.kind === 'pass') ? (m.gain > 0 ? '+' : '') + m.gain + ' YDS' : m.kind === 'punt' ? 'PUNT' : m.kind === 'kickoff' ? 'KICKOFF' : '';
   const toast = svg.append('g').attr('opacity', 0);
   if (word) { const tw = word.length * 17 + 34, tx = X(vx) + VBW / 2; toast.attr('transform', 'translate(' + tx + ',' + (VBH - PAD - 30) + ')'); toast.append('rect').attr('x', -tw / 2).attr('y', -22).attr('width', tw).attr('height', 40).attr('rx', 8).attr('fill', '#0b1626').attr('opacity', 0.9); toast.append('rect').attr('x', -tw / 2).attr('y', -22).attr('width', 7).attr('height', 40).attr('rx', 3).attr('fill', m.off.color); toast.append('text').attr('text-anchor', 'middle').attr('x', 3).attr('y', 8).attr('fill', '#fff').attr('font-family', 'Impact, Haettenschweiler, Arial Narrow Bold, sans-serif').attr('font-size', 27).attr('letter-spacing', 2).text(word); }
   svg.append('rect').attr('x', X(vx)).attr('y', 0).attr('width', VBW).attr('height', VBH).attr('fill', 'url(#fbVig)').attr('pointer-events', 'none');
   el.appendChild(svg.node());
-  /* ---- animation ---- */
+  /* ---- one frame at time t (seconds). Pure, so it can be scrubbed ---- */
   const along = (pts, u) => { const n = pts.length - 1, x = Math.max(0, Math.min(0.9999, u)) * n, i = Math.floor(x); return lerp(pts[i], pts[i + 1], x - i); };
   const seg = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
-  const heading = (a, b, fallback) => (Math.abs(b.x - a.x) + Math.abs(b.z - a.z) < 0.01 ? fallback : Math.atan2(b.z - a.z, b.x - a.x) * 180 / Math.PI);
-  const LOOP = 6.4; FBF.t0 = performance.now();
-  const frame = (now) => {
-    const t = FB_FIXED_T !== null ? FB_FIXED_T : ((now - FBF.t0) / 1000) % LOOP;
+  const render = (t) => {
     const live = fbEase(seg(t, 0.8, 4.1));
-    extras.forEach((o) => { const p = lerp(o.a, o.b, live); place(o, p, heading(o.a, o.b, o.face)); });
-    let bp = endPt, bh = 0, bdir = offFace, ru = 0, fu = 0;
+    extras.forEach((o) => place(o, lerp(o.a, o.b, live)));
+    let who = null, ru = 0, fu = 0, air = false;
     if (m.kind === 'pass') {
-      const q = lerp(qb0, qb1, fbEase(seg(t, 0.8, 1.7))); place(qb, q, heading(q, flight[1], offFace));
+      const q = lerp(qb0, qb1, fbEase(seg(t, 0.8, 1.7))); qb.a = qb0; place(qb, q);
       const stemEnd = m.complete ? (carrier.length - 2) / (carrier.length - 1) : 1;
       ru = t < 2.8 ? fbEase(seg(t, 0.8, 2.8)) * stemEnd : stemEnd + seg(t, 2.8, 4.2) * (1 - stemEnd);
-      const mp = along(carrier, ru), ahead = along(carrier, Math.min(1, ru + 0.03)); place(mover, mp, heading(mp, ahead, offFace));
-      fu = seg(t, 1.8, 2.8);
-      if (t < 1.8) { bp = P(q.x + f * 0.6, q.z + 0.5); } else if (t < 2.8) { bp = lerp(flight[0], flight[1], fu); bh = Math.sin(Math.PI * fu); bdir = heading(flight[0], flight[1], offFace); } else if (m.complete) { bp = P(mp.x + f * 0.5, mp.z + 0.5); } else { bp = lerp(flight[1], P(flight[1].x + f * 2.5, flight[1].z + side * 1.5), seg(t, 2.8, 3.4)); bh = 0.25 * Math.abs(Math.sin(seg(t, 2.8, 3.4) * Math.PI * 2)); }
+      const mp = along(carrier, ru); mover.a = null; place(mover, mp);
+      fu = seg(t, 1.8, 2.8); air = t >= 1.8 && t < 2.8;
+      who = t < 1.8 ? q : t >= 2.8 && m.complete ? mp : null;
     } else if (m.kind === 'run') {
-      const q = lerp(qb0, P(m.xs - f * 4.2, 0.6), fbEase(seg(t, 0.8, 1.4))); place(qb, q);
-      ru = fbEase(seg(t, 1.0, 4.1)); const mp = along(carrier, ru), ahead = along(carrier, Math.min(1, ru + 0.03)); place(mover, mp, heading(mp, ahead, offFace));
-      bp = t < 1.4 ? P(q.x + f * 0.6, q.z + 0.5) : P(mp.x + f * 0.5, mp.z + 0.5);
-    } else if (m.kind === 'sack') { ru = fbEase(seg(t, 0.8, 3.4)); const q = along(carrier, ru); place(qb, q); bp = P(q.x + f * 0.6, q.z + 0.5); }
-    else if (kick) { fu = seg(t, 1.0, 4.0); bp = lerp(flight[0], flight[1], fu); bh = Math.sin(Math.PI * fu) * 1.7; bdir = heading(flight[0], flight[1], offFace); }
-    routeTrail.set(ru); flightTrail.set(fu);
-    const bx = X(bp.x), bz = Z(bp.z), lift = bh * 26, sc = 1 + bh * 0.9;
-    ballShadow.attr('cx', bx + 2 + lift * 0.25).attr('cy', bz + 3 + lift * 0.5).attr('opacity', 0.3 - bh * 0.12).attr('rx', 6 * (1 + bh * 0.3));
-    ball.attr('transform', 'translate(' + bx + ',' + (bz - lift) + ') rotate(' + bdir + ') scale(' + sc + ')'); ballIn.attr('transform', bh > 0.02 ? 'scale(1,' + (0.72 + 0.28 * Math.cos(now / 45)) + ')' : null);
-    const done = seg(t, 4.1, 4.5); spot.attr('opacity', done).attr('transform', 'translate(' + X(endPt.x) + ',' + Z(endPt.z) + ') scale(' + (1 + 0.18 * Math.sin(now / 200)) + ')'); toast.attr('opacity', done);
-    FBF.raf = requestAnimationFrame(frame);
+      const q = lerp(qb0, P(m.xs - f * 4.2, 0.6), fbEase(seg(t, 0.8, 1.4))); qb.a = qb0; place(qb, q);
+      ru = fbEase(seg(t, 1.0, 4.1)); const mp = along(carrier, ru); mover.a = null; place(mover, mp); who = t < 1.4 ? q : mp;
+    } else if (m.kind === 'sack') { ru = fbEase(seg(t, 0.8, 3.4)); const q = along(carrier, ru); place(qb, q); who = q; }
+    else if (kick) { fu = seg(t, 1.0, 4.0); air = t >= 1.0 && t < 4.0; who = t < 1.0 ? flight[0] : null; }
+    routeTrail.set(ru); arcPaths.attr('stroke-dasharray', fu + ' 1');
+    if (who) halo.attr('opacity', 0.95).attr('cx', X(who.x)).attr('cy', Z(who.z)).attr('r', 19 + 1.6 * Math.sin(t * 7)); else halo.attr('opacity', 0);
+    if (air && flight) { const p = arcPt(fu); tracer.attr('opacity', 1).attr('transform', 'translate(' + p.u + ',' + p.v + ')'); } else tracer.attr('opacity', 0);
+    const done = seg(t, 4.1, 4.5); spot.attr('opacity', done); toast.attr('opacity', done);
   };
-  FBF.raf = requestAnimationFrame(frame);
+  const marks = m.kind === 'pass' ? [[0.8, 'Snap'], [1.8, 'Throw'], [2.8, m.complete ? 'Catch' : 'Incomplete']].concat(m.complete ? [[4.2, 'Down']] : []) : m.kind === 'run' ? [[0.8, 'Snap'], [1.4, 'Handoff'], [4.1, 'Down']] : m.kind === 'sack' ? [[0.8, 'Snap'], [3.4, 'Sack']] : kick ? [[1.0, 'Kick'], [4.0, 'Lands']] : [];
+  return {render: render, dur: 4.9, marks: marks};
 }
 
-function fbShowPlay(card, m, note) {
-  FBF.model = m;
-  const cap = card.querySelector('.fb-fcap'), chips = card.querySelector('.fb-fchips'), stage = card.querySelector('.fb-fstage');
+/* ---- playback: play, pause, replay, scrub, half speed, and step through recent plays ---- */
+const FBP = {t: 0, playing: true, speed: 1, anim: null, last: 0, hold: 0, plays: [], ix: 0, card: null, follow: true};
+function fbLoop(now) {
+  const a = FBP.anim; if (!a) return;
+  const dt = Math.min(0.1, (now - FBP.last) / 1000); FBP.last = now;
+  if (FB_FIXED_T !== null) { FBP.t = FB_FIXED_T; FBP.playing = false; }
+  else if (FBP.playing) { FBP.t += dt * FBP.speed; if (FBP.t >= a.dur) { FBP.t = a.dur; FBP.hold += dt; if (FBP.hold > 1.6) { FBP.t = 0; FBP.hold = 0; } } }
+  a.render(FBP.t);
+  const c = FBP.card; if (c) { const sc = c.querySelector('.fb-fscrub'); if (sc && document.activeElement !== sc) sc.value = String(Math.round(1000 * FBP.t / a.dur)); c.querySelector('[data-a=toggle]').textContent = FBP.playing ? 'Pause' : 'Play'; }
+  FBF.raf = requestAnimationFrame(fbLoop);
+}
+function fbControls(card) {
+  const box = card.querySelector('.fb-fctl'); if (box.childElementCount) return;
+  const row = document.createElement('div'); row.className = 'fb-frow';
+  [['prev', '◀ Prev play'], ['toggle', 'Pause'], ['restart', 'Replay'], ['speed', '1× speed'], ['next', 'Next play ▶']].forEach(([a, text]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'fb-fbtn'; b.setAttribute('data-a', a); b.textContent = text; row.appendChild(b); });
+  const sc = document.createElement('input'); sc.type = 'range'; sc.min = '0'; sc.max = '1000'; sc.value = '0'; sc.className = 'fb-fscrub'; sc.setAttribute('aria-label', 'Scrub through the play');
+  const marks = document.createElement('div'); marks.className = 'fb-fmarks'; const pos = document.createElement('div'); pos.className = 'fb-fpos';
+  box.append(row, sc, marks, pos);
+  sc.addEventListener('input', () => { if (!FBP.anim) return; FBP.playing = false; FBP.hold = 0; FBP.t = FBP.anim.dur * (+sc.value) / 1000; });
+  row.addEventListener('click', (e) => {
+    const a = e.target && e.target.getAttribute && e.target.getAttribute('data-a'); if (!a) return;
+    if (a === 'toggle') { if (!FBP.playing && FBP.anim && FBP.t >= FBP.anim.dur) FBP.t = 0; FBP.playing = !FBP.playing; FBP.hold = 0; }
+    else if (a === 'restart') { FBP.t = 0; FBP.hold = 0; FBP.playing = true; }
+    else if (a === 'speed') { FBP.speed = FBP.speed === 1 ? 0.5 : FBP.speed === 0.5 ? 0.25 : 1; e.target.textContent = (FBP.speed === 1 ? '1' : FBP.speed === 0.5 ? '½' : '¼') + '× speed'; }
+    else if (a === 'prev' && FBP.ix > 0) { FBP.follow = false; fbShowAt(card, FBP.ix - 1); }
+    else if (a === 'next' && FBP.ix < FBP.plays.length - 1) { fbShowAt(card, FBP.ix + 1); FBP.follow = FBP.ix === FBP.plays.length - 1; }
+  });
+}
+function fbShowAt(card, ix) {
+  const item = FBP.plays[ix]; if (!item) return;
+  FBP.ix = ix; FBP.card = card; const m = item.model; FBF.model = m;
+  const cap = card.querySelector('.fb-fcap'), chips = card.querySelector('.fb-fchips'), stage = card.querySelector('.fb-fstage'), ctl = card.querySelector('.fb-fctl');
   const chip = (text, cls) => { const s = document.createElement('span'); s.className = 'fb-fchip' + (cls ? ' ' + cls : ''); s.textContent = text; return s; };
   const out = [chip(m.off.short + ' ball')];
   if (m.downText) out.push(chip(m.downText)); if (m.clock) out.push(chip(m.clock));
-  const label = {pass: m.complete ? 'Pass complete' : m.turnover ? 'Intercepted' : 'Pass incomplete', run: 'Run', sack: 'Sack', punt: 'Punt', kickoff: 'Kickoff', fg: 'Field goal try', other: 'Play'}[m.kind];
-  out.push(chip(label));
+  out.push(chip({pass: m.complete ? 'Pass complete' : m.turnover ? 'Intercepted' : 'Pass incomplete', run: 'Run', sack: 'Sack', punt: 'Punt', kickoff: 'Kickoff', fg: 'Field goal try', other: 'Play'}[m.kind]));
   if (m.gain !== null && (m.kind === 'run' || m.kind === 'sack' || m.complete)) out.push(chip((m.gain > 0 ? '+' : '') + m.gain + ' yards'));
-  if (m.score) out.push(chip('Score', 'fb-fgood')); if (m.turnover) out.push(chip('Turnover', 'fb-fbad'));
-  if (note) out.push(chip(note, 'fb-fbad'));
+  if (m.score) out.push(chip('Score', 'fb-fgood')); if (m.turnover) out.push(chip('Turnover', 'fb-fbad')); if (item.note) out.push(chip(item.note, 'fb-fbad'));
   chips.replaceChildren(...out); cap.textContent = m.text + (m.approx ? ' (Field position not in the feed, so the spot shown is approximate.)' : '');
-  stage.hidden = false; fbBuild(stage, m);
+  stage.hidden = false; ctl.hidden = false; fbControls(card);
+  if (FBF.raf) cancelAnimationFrame(FBF.raf);
+  FBP.anim = fbBuild(stage, m); FBP.t = 0; FBP.hold = 0; FBP.playing = true; FBP.last = performance.now();
+  const mk2 = card.querySelector('.fb-fmarks'); mk2.replaceChildren(...FBP.anim.marks.map(([t, label]) => { const s = document.createElement('span'); s.textContent = label; s.style.left = (100 * t / FBP.anim.dur) + '%'; return s; }));
+  const n = FBP.plays.length; card.querySelector('.fb-fpos').textContent = n > 1 ? 'Play ' + (ix + 1) + ' of the last ' + n + (ix === n - 1 ? ' · most recent' : '') : '';
+  card.querySelector('[data-a=prev]').disabled = ix === 0; card.querySelector('[data-a=next]').disabled = ix >= n - 1;
+  FBF.raf = requestAnimationFrame(fbLoop);
 }
+function fbHide(card) { if (FBF.raf) cancelAnimationFrame(FBF.raf); FBP.anim = null; FBP.plays = []; card.querySelector('.fb-fstage').hidden = true; card.querySelector('.fb-fctl').hidden = true; card.querySelector('.fb-fchips').replaceChildren(); card.querySelector('.fb-fcap').textContent = ''; }
 
 const FB_SAMPLES = [
   {type: {text: 'Pass Reception'}, text: '(Shotgun) Q.Back pass deep right to W.Receiver for 27 yards. Sample play.', statYardage: 27, start: {down: 2, distance: 7, yardsToEndzone: 62, team: {id: 'A'}}, end: {yardsToEndzone: 35}, period: {number: 2}, clock: {displayValue: '8:41'}},
   {type: {text: 'Rush'}, text: 'R.Back left tackle for 9 yards. Sample play.', statYardage: 9, start: {down: 1, distance: 10, yardsToEndzone: 44, team: {id: 'H'}}, end: {yardsToEndzone: 35}, period: {number: 3}, clock: {displayValue: '11:02'}},
+  {type: {text: 'Pass Incompletion'}, text: '(Shotgun) Q.Back pass incomplete short left to T.End. Sample play.', statYardage: 0, start: {down: 3, distance: 6, yardsToEndzone: 35, team: {id: 'A'}}, end: {yardsToEndzone: 35}, period: {number: 3}, clock: {displayValue: '10:20'}},
 ];
-let fbSampleIx = 0;
-const FB_FIXED_T = /[?&]t=([\d.]+)/.test(location.search) ? +location.search.match(/[?&]t=([\d.]+)/)[1] : null;
+const FB_FIXED_T = typeof location !== 'undefined' && /[?&]t=([\d.]+)/.test(location.search) ? +location.search.match(/[?&]t=([\d.]+)/)[1] : null;
 
 async function fbFieldTick() {
   const tab = document.querySelector('.fb-sec:not([hidden])'); if (!tab) return;
@@ -256,29 +293,31 @@ async function fbFieldTick() {
   const g = league === 'nfl' ? curGame() : curCfb(); if (!g) return;
   const sides = league === 'nfl' ? nflSides(g) : cfbSides(g); if (!sides) return;
   const l = liveOf(league, g), status = l ? l.status : 'scheduled';
-  const idle = card.querySelector('.fb-fidle'), stage = card.querySelector('.fb-fstage'), key = league + '|' + g.id + '|' + status;
-  const ctx = {homeId: l ? l.home_id : 'H', awayId: l ? l.away_id : 'A', home: sides[1], away: sides[0], college: league === 'cfb'};
-  if (status !== 'live' && status !== 'final') {
-    if (FBF.key !== key) { FBF.key = key; FBF.sample = false; if (FBF.raf) cancelAnimationFrame(FBF.raf); stage.hidden = true; card.querySelector('.fb-fchips').replaceChildren(); card.querySelector('.fb-fcap').textContent = ''; idle.hidden = false; }
-    return;
-  }
+  const idle = card.querySelector('.fb-fidle'), key = league + '|' + g.id + '|' + status;
+  if (status !== 'live' && status !== 'final') { if (FBF.key !== key) { FBF.key = key; fbHide(card); idle.hidden = false; idle.querySelectorAll('p').forEach((x) => { x.hidden = false; }); } return; }
   idle.hidden = true;
-  const due = FBF.key !== key || (status === 'live' && Date.now() - FBF.timer > 15000);
-  if (!due) return;
-  FBF.key = key; FBF.timer = Date.now();
+  const due = FBF.key !== key || (status === 'live' && Date.now() - FBF.timer > 15000); if (!due) return;
+  const fresh = FBF.key !== key; FBF.key = key; FBF.timer = Date.now();
   let summary = null;
   try { summary = await (await fetch('https://site.api.espn.com/apis/site/v2/sports/football/' + (league === 'nfl' ? 'nfl' : 'college-football') + '/summary?event=' + l.event_id, {cache: 'no-store'})).json(); } catch (e) { console.warn('play feed unavailable', e); }
-  const pick = fbPickPlay(summary, l.situation);
-  if (!pick) { stage.hidden = true; card.querySelector('.fb-fcap').textContent = 'No play-by-play is available for this game yet.'; return; }
-  ctx.driveTeamId = pick.driveTeamId;
-  const m = fbParsePlay(pick.play, ctx);
-  if (!FBF.model || FBF.model.text !== m.text || stage.hidden) fbShowPlay(card, m, status === 'final' ? 'Last play of the game' : '');
+  const picks = fbPickPlays(summary, l.situation, 12);
+  if (!picks.length) { fbHide(card); card.querySelector('.fb-fcap').textContent = 'No play-by-play is available for this game yet.'; return; }
+  const models = picks.map((pk) => ({model: fbParsePlay(pk.play, {homeId: l.home_id, awayId: l.away_id, home: sides[1], away: sides[0], college: league === 'cfb', driveTeamId: pk.driveTeamId}), note: ''}));
+  const lastText = FBP.plays.length ? FBP.plays[FBP.plays.length - 1].model.text : '', newest = models[models.length - 1].model.text;
+  const wasShown = FBP.plays[FBP.ix] ? FBP.plays[FBP.ix].model.text : '';
+  FBP.plays = models;
+  if (fresh || !FBP.anim) { FBP.follow = true; fbShowAt(card, models.length - 1); }
+  else if (newest !== lastText && FBP.follow) fbShowAt(card, models.length - 1);
+  else { const keep = models.findIndex((x) => x.model.text === wasShown); FBP.ix = keep < 0 ? models.length - 1 : keep; const n = models.length; card.querySelector('.fb-fpos').textContent = n > 1 ? 'Play ' + (FBP.ix + 1) + ' of the last ' + n + (FBP.ix === n - 1 ? ' · most recent' : ' · newer play available') : ''; card.querySelector('[data-a=next]').disabled = FBP.ix >= n - 1; card.querySelector('[data-a=prev]').disabled = FBP.ix === 0; }
 }
 document.querySelectorAll('.fb-fsample').forEach((b) => b.addEventListener('click', () => {
   const card = b.closest('.fb-field'), tab = b.closest('.fb-sec'), g = tab.id === 'nfl' ? curGame() : curCfb(); if (!g) return;
   const sides = tab.id === 'nfl' ? nflSides(g) : cfbSides(g); if (!sides) return;
-  const m = fbParsePlay(FB_SAMPLES[fbSampleIx++ % FB_SAMPLES.length], {homeId: 'H', awayId: 'A', home: sides[1], away: sides[0], college: tab.id === 'cfb'});
-  const lv = liveOf(tab.id, g); FBF.key = tab.id + '|' + g.id + '|' + (lv ? lv.status : 'scheduled'); FBF.sample = true; card.querySelectorAll('.fb-fidle p').forEach((x) => { x.hidden = true; }); fbShowPlay(card, m, 'Sample, not a real play');
+  const lv = liveOf(tab.id, g); FBF.key = tab.id + '|' + g.id + '|' + (lv ? lv.status : 'scheduled');
+  FBP.plays = FB_SAMPLES.map((p) => ({model: fbParsePlay(p, {homeId: 'H', awayId: 'A', home: sides[1], away: sides[0], college: tab.id === 'cfb'}), note: 'Sample, not a real play'}));
+  card.querySelectorAll('.fb-fidle p').forEach((x) => { x.hidden = true; });
+  const want = typeof location !== 'undefined' && /sample=(\d)/.test(location.search) ? +location.search.match(/sample=(\d)/)[1] - 1 : 0;
+  fbShowAt(card, Math.max(0, Math.min(FB_SAMPLES.length - 1, want)));
 }));
 setInterval(() => { fbFieldTick().catch((e) => console.error(e)); }, 1000);
-if (/[?&]sample\b/.test(location.search)) setTimeout(() => { const b = document.querySelector('.fb-sec:not([hidden]) .fb-fsample'); if (b) { if (/sample=2/.test(location.search)) fbSampleIx = 1; b.click(); } }, 600);
+if (typeof location !== 'undefined' && /[?&]sample\b/.test(location.search)) setTimeout(() => { const b = document.querySelector('.fb-sec:not([hidden]) .fb-fsample'); if (b) b.click(); }, 600);
